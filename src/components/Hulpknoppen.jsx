@@ -81,3 +81,23 @@ export function InstallerenKnop({ className = "", tekst = true }) {
     </>
   );
 }
+
+// Uitloggen, met een korte bevestiging zodat je er niet per ongeluk uit tikt.
+export function UitlogKnop({ onUit, naam = "", className = "" }) {
+  const [open, setOpen] = useState(false);
+  const [bezig, setBezig] = useState(false);
+  return (
+    <>
+      <button type="button" className={`hulpknop ${className}`} onClick={() => setOpen(true)} aria-label="Uitloggen" title="Uitloggen">
+        <Icoon naam="uit" />
+      </button>
+      <Blad open={open} onSluit={() => setOpen(false)} titel="Afstappen?" label="Uitloggen">
+        <p className="uitlog-tekst">{naam ? `${naam.split(" ")[0]}, je` : "Je"} logt uit op dit apparaat. Daarna log je weer in met je e-mailadres en je wachtwoord of code.</p>
+        <div className="keuze2">
+          <button className="knop gevaar" disabled={bezig} onClick={async () => { setBezig(true); await onUit(); }}><Icoon naam="uit" />{bezig ? "Bezig…" : "Uitloggen"}</button>
+          <button className="knop" onClick={() => setOpen(false)}>Blijf ingelogd</button>
+        </div>
+      </Blad>
+    </>
+  );
+}

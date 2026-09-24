@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
 import { Logo } from "../components/Merk.jsx";
-import { VolledigSchermKnop, HandleidingKnop } from "../components/Hulpknoppen.jsx";
+import { VolledigSchermKnop, HandleidingKnop, UitlogKnop } from "../components/Hulpknoppen.jsx";
 import Icoon from "../components/Icoon.jsx";
 import RitKaartje, { LuieKaart, TypeChip, Rijders, MijnStatus } from "../components/RitKaartje.jsx";
 import { WeerChip } from "../components/Weer.jsx";
@@ -63,7 +63,12 @@ function Volgende({ rit, lidId, onOpen }) {
 }
 
 export default function Ritten() {
-  const { lid, ga, sessie } = useApp();
+  const { lid, ga, sessie, setSessie } = useApp();
+  async function uitloggen() {
+    await api("logout", { methode: "POST" }).catch(() => {});
+    setSessie({ laden: false, lid: null });
+    history.replaceState(null, "", "/");
+  }
   const [ritten, setRitten] = useState(null);
   const [fout, setFout] = useState("");
   const [filter, setFilter] = useState("alles");
@@ -89,7 +94,7 @@ export default function Ritten() {
       <header className="ritten-kop">
         <Logo className="alleen-mobiel" />
         <div className="groet">
-          <div className="kop-knoppen"><HandleidingKnop /><VolledigSchermKnop /></div>
+          <div className="kop-knoppen"><HandleidingKnop /><VolledigSchermKnop /><UitlogKnop naam={lid.naam} onUit={uitloggen} /></div>
           <span className="label">{groet(lid.naam)}</span>
         </div>
       </header>
