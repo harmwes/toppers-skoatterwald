@@ -26,6 +26,7 @@ export function nieuwId(lengte = 10) {
   return crypto.randomBytes(lengte).toString("base64url").slice(0, lengte);
 }
 
+const STANDAARD_MELDINGSADRES = "harm.wesseling@frisiusmc.nl";
 let migratieGedaan = false;
 
 // Config met geheime sleutel, admincode en de eerste admin.
@@ -55,6 +56,11 @@ export async function config() {
       aangemaakt: new Date().toISOString(),
     };
     if (!(await store.get("leden/admin"))) await store.setJSON("leden/admin", admin);
+  }
+  // Eenmalig startadres voor meldingen over nieuwe aanvragen (alleen live, alleen als er nog nooit een adres is gekozen).
+  if (cfg.meldingsEmail === undefined && !process.env.LOCAL_STORE_DIR) {
+    cfg.meldingsEmail = STANDAARD_MELDINGSADRES;
+    await store.setJSON("config", cfg);
   }
   if (!cfg.versleuteld && versleutelingAan() && !migratieGedaan) {
     migratieGedaan = true;
