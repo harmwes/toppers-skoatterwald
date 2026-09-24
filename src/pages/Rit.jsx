@@ -235,7 +235,7 @@ export default function Rit({ id }) {
           </section>
 
           <section className="sectie">
-            <div className="sectiekop"><h2>Startlijst</h2><span className="label tab">{rit.aanmeldingen.filter((a) => a.status === "ja").length} rijders</span></div>
+            <div className="sectiekop"><h2>Startlijst</h2>{(() => { const n = rit.aanmeldingen.filter((a) => a.status === "ja").length; return <span className="label tab">{n} {n === 1 ? "rijder" : "rijders"}</span>; })()}</div>
             <div className="kaart pad"><Startlijst rit={rit} /></div>
           </section>
 

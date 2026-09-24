@@ -135,7 +135,7 @@ export default function Ritten() {
 
           {verleden.length > 0 && (
             <section className="sectie">
-              <div className="sectiekop"><h2>Gereden</h2><span className="label tab">{verleden.length} ritten</span></div>
+              <div className="sectiekop"><h2>Gereden</h2><span className="label tab">{verleden.length} {verleden.length === 1 ? "rit" : "ritten"}</span></div>
               <div className="ritlijst">
                 {(alleOud ? verleden : verleden.slice(0, 3)).map((r) => <RitKaartje key={r.id} rit={r} lidId={lid.id} verleden onOpen={() => ga(`/rit/${r.id}`)} />)}
               </div>

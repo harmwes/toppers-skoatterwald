@@ -69,7 +69,7 @@ h3 { font-size: 21px; }
 
 /* ---------- App-schil ---------- */
 .schil { min-height: 100dvh; padding-bottom: calc(var(--tabbalk) + var(--veilig-onder) + 16px); }
-.pagina { max-width: 720px; margin: 0 auto; padding: calc(var(--veilig-boven) + 14px) 16px 24px; animation: binnen .38s cubic-bezier(.2, .8, .2, 1) both; }
+.pagina { max-width: 720px; margin: 0 auto; padding: calc(var(--veilig-boven) + 14px) 16px 24px; animation: binnen .38s cubic-bezier(.2, .8, .2, 1) backwards; /* backwards: geen blijvende transform, anders plakken vaste balken aan de pagina */ }
 .pagina.breed { max-width: 1180px; }
 @keyframes binnen { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 

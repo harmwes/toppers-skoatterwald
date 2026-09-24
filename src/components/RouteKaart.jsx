@@ -78,6 +78,19 @@ export default function RouteKaart({ route, type = "race", wind, toonWind = fals
     k._fitting = true;
     k.fitBounds(grens.current, { padding: interactief ? [28, 28] : [16, 16], animate: false });
     k._fitting = false;
+    // Nog een keer passend maken zodra de layout zeker klaar is (bijvoorbeeld na openen vanaf de achtergrond).
+    const pasAan = () => {
+      if (!kaart.current || aangeraakt.current || !grens.current) return;
+      k.invalidateSize({ pan: false });
+      k._fitting = true;
+      k.fitBounds(grens.current, { padding: interactief ? [28, 28] : [16, 16], animate: false });
+      k._fitting = false;
+    };
+    requestAnimationFrame(pasAan);
+    const t1 = setTimeout(pasAan, 350), t2 = setTimeout(pasAan, 1200);
+    const zichtbaar = () => { if (!document.hidden) pasAan(); };
+    document.addEventListener("visibilitychange", zichtbaar);
+    return () => { clearTimeout(t1); clearTimeout(t2); document.removeEventListener("visibilitychange", zichtbaar); };
   }, [route, type, wind, toonWind, afhaak, kmMarkers, interactief]);
 
   useEffect(() => {

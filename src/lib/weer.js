@@ -118,8 +118,16 @@ export function windLangsRoute(rit, weer) {
     stukken, pct,
     waaierAlarm: waaier / som > 0.2,
     waaierKm: Math.round(waaier / 1000),
-    advies: tegenEerste > tegenTweede * 1.3 ? "Eerst tegenwind, straks wind mee naar huis." : tegenTweede > tegenEerste * 1.3 ? "Let op: de tegenwind komt op de terugweg." : "Wind verdeeld over de rit.",
+    advies: adviesTekst(pct, tegenEerste, tegenTweede, Math.max(...weer.uren.map((u) => u.wind))),
   };
+}
+
+function adviesTekst(pct, eerste, tweede, maxWind) {
+  if (maxWind < 12) return "Nauwelijks wind: ideaal koersweer.";
+  if (pct.tegen < 20) return pct.zij >= 40 ? "Weinig tegenwind, wel veel zijwind." : "Weinig tegenwind: dit wordt een snelle rit.";
+  if (eerste > tweede * 1.3) return "Eerst tegenwind, straks wind mee naar huis.";
+  if (tweede > eerste * 1.3) return "Let op: de tegenwind komt op de terugweg.";
+  return "Tegenwind verdeeld over de hele rit.";
 }
 
 export function windKleur(component) {
