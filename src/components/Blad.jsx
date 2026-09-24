@@ -21,7 +21,7 @@ export default function Blad({ open, onSluit, titel, children, label }) {
             {label && <div className="label">{label}</div>}
             <h2>{titel}</h2>
           </div>
-          <button className="icoonknop" onClick={onSluit} aria-label="Sluiten"><Icoon naam="kruis" /></button>
+          <button type="button" className="icoonknop" onClick={onSluit} aria-label="Sluiten"><Icoon naam="kruis" /></button>
         </div>
         <div className="blad-inhoud">{children}</div>
       </div>

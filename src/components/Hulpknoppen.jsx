@@ -14,7 +14,7 @@ export function VolledigSchermKnop({ className = "" }) {
   if (geinstalleerd) return null; // als app op het beginscherm is hij al schermvullend
   return (
     <>
-      <button className={`hulpknop ${className}`} onClick={() => (echt ? vs.wissel() : setUitleg(true))} aria-label={vs.aan ? "Volledig scherm uit" : "Volledig scherm"} title={vs.aan ? "Volledig scherm uit" : "Volledig scherm"}>
+      <button type="button" className={`hulpknop ${className}`} onClick={() => (echt ? vs.wissel() : setUitleg(true))} aria-label={vs.aan ? "Volledig scherm uit" : "Volledig scherm"} title={vs.aan ? "Volledig scherm uit" : "Volledig scherm"}>
         <Icoon naam={vs.aan ? "kleinscherm" : "volscherm"} />
       </button>
       {/* iPhone en iPad kennen geen volledig-schermknop: leg uit hoe het wel kan. */}
@@ -53,7 +53,7 @@ export function InstallerenBlad({ open, onSluit, volledigScherm = false }) {
         </ol>
       ) : inst.kan ? (
         <>
-          <button className="knop primair vol inst-knop" onClick={async () => { if (await inst.installeer()) setKlaar(true); }}>
+          <button type="button" className="knop primair vol inst-knop" onClick={async () => { if (await inst.installeer()) setKlaar(true); }}>
             <Icoon naam="installeer" />Installeer Toppers
           </button>
           <p className="klein" style={{ textAlign: "center", marginTop: 10 }}>Je telefoon vraagt nog één keer om bevestiging.</p>
@@ -74,7 +74,7 @@ export function InstallerenKnop({ className = "", tekst = true }) {
   if (isGeinstalleerd()) return null;
   return (
     <>
-      <button className={tekst ? `knop ${className}` : `hulpknop ${className}`} onClick={() => setOpen(true)} aria-label="App installeren" title="App installeren">
+      <button type="button" className={tekst ? `knop ${className}` : `hulpknop ${className}`} onClick={() => setOpen(true)} aria-label="App installeren" title="App installeren">
         <Icoon naam="installeer" />{tekst && "App op je telefoon"}
       </button>
       <InstallerenBlad open={open} onSluit={() => setOpen(false)} />
@@ -94,8 +94,8 @@ export function UitlogKnop({ onUit, naam = "", className = "" }) {
       <Blad open={open} onSluit={() => setOpen(false)} titel="Afstappen?" label="Uitloggen">
         <p className="uitlog-tekst">{naam ? `${naam.split(" ")[0]}, je` : "Je"} logt uit op dit apparaat. Daarna log je weer in met je e-mailadres en je wachtwoord of code.</p>
         <div className="keuze2">
-          <button className="knop gevaar" disabled={bezig} onClick={async () => { setBezig(true); await onUit(); }}><Icoon naam="uit" />{bezig ? "Bezig…" : "Uitloggen"}</button>
-          <button className="knop" onClick={() => setOpen(false)}>Blijf ingelogd</button>
+          <button type="button" className="knop gevaar" disabled={bezig} onClick={async () => { setBezig(true); await onUit(); }}><Icoon naam="uit" />{bezig ? "Bezig…" : "Uitloggen"}</button>
+          <button type="button" className="knop" onClick={() => setOpen(false)}>Blijf ingelogd</button>
         </div>
       </Blad>
     </>

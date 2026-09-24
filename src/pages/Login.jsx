@@ -118,7 +118,7 @@ export default function Login({ onIngelogd, fout: startFout }) {
           <div className="login-scheiding"><span>nog geen account?</span></div>
           <button type="button" className="knop vol meedoen-knop" onClick={() => setMeedoen(true)}><Icoon naam="handzwaai" />Meedoen</button>
           <InstallerenKnop className="vol stil installeer-login" />
-          <p className="klein login-hulp">Code of wachtwoord kwijt? Vraag de organisatie om een nieuwe code. Die krijg je per mail.</p>
+          <p className="klein login-hulp">Code of wachtwoord kwijt? Vraag de organisatie om een nieuwe code. Die krijg je per mail of WhatsApp.</p>
         </form>
         <div className="login-voet klein">Een idee van Harm · <Pompeblad className="pompeblad i14" /> Skoatterwâld</div>
       </div>
