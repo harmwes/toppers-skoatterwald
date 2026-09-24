@@ -3,6 +3,7 @@ import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
 import Icoon, { TypeIcoon } from "../components/Icoon.jsx";
 import { Rugnummer, Pompeblad } from "../components/Merk.jsx";
+import { InstallerenKnop, HANDLEIDING } from "../components/Hulpknoppen.jsx";
 import { TYPES, eindMoment } from "../lib/tijd.js";
 
 function Formuliervak({ titel, children, open: startOpen = false, icoon }) {
@@ -147,11 +148,10 @@ export default function Profiel() {
           </form>
         </Formuliervak>
 
-        <Formuliervak titel="App op je beginscherm" icoon="download">
-          <p className="klein" style={{ marginTop: 0 }}><b>iPhone:</b> open deze site in Safari, tik op het deelicoon en kies <i>Zet op beginscherm</i>.</p>
-          <p className="klein"><b>Android:</b> open het menu in Chrome en kies <i>App installeren</i>.</p>
-          <p className="klein" style={{ marginBottom: 0 }}>Daarna opent Toppers als een gewone app, zonder adresbalk.</p>
-        </Formuliervak>
+        <a className="kaart vak vak-kop vak-link" href={HANDLEIDING} target="_blank" rel="noreferrer">
+          <Icoon naam="boek" className="i20" /><span>Handleiding (PDF)</span><Icoon naam="verder" className="i18 pijl" />
+        </a>
+        <InstallerenKnop className="vol installeer-profiel" />
       </section>
 
       {lid.rol === "admin" && (

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
 import { Logo } from "../components/Merk.jsx";
+import { VolledigSchermKnop, HandleidingKnop } from "../components/Hulpknoppen.jsx";
 import Icoon from "../components/Icoon.jsx";
 import RitKaartje, { LuieKaart, TypeChip, Rijders, MijnStatus } from "../components/RitKaartje.jsx";
 import { WeerChip } from "../components/Weer.jsx";
@@ -62,7 +63,7 @@ function Volgende({ rit, lidId, onOpen }) {
 }
 
 export default function Ritten() {
-  const { lid, ga } = useApp();
+  const { lid, ga, sessie } = useApp();
   const [ritten, setRitten] = useState(null);
   const [fout, setFout] = useState("");
   const [filter, setFilter] = useState("alles");
@@ -88,6 +89,7 @@ export default function Ritten() {
       <header className="ritten-kop">
         <Logo className="alleen-mobiel" />
         <div className="groet">
+          <div className="kop-knoppen"><HandleidingKnop /><VolledigSchermKnop /></div>
           <span className="label">{groet(lid.naam)}</span>
         </div>
       </header>
@@ -95,6 +97,14 @@ export default function Ritten() {
       {lid.wachtwoordStandaard && (
         <button className="melding let klikbaar" onClick={() => ga("/profiel")}>
           <Icoon naam="sleutel" /><span>Je gebruikt nog je startwachtwoord. <u>Kies nu je eigen wachtwoord.</u></span>
+        </button>
+      )}
+
+      {lid.rol === "admin" && sessie.aanvragen > 0 && (
+        <button className="aanvraag-melding" onClick={() => ga("/admin?tab=aanvragen")}>
+          <span className="am-bel"><Icoon naam="bel" /><em>{sessie.aanvragen}</em></span>
+          <span><b>{sessie.aanvragen === 1 ? "1 nieuwe aanvraag" : `${sessie.aanvragen} nieuwe aanvragen`}</b> om mee te doen. Tik om te bekijken.</span>
+          <Icoon naam="verder" className="i18" />
         </button>
       )}
 

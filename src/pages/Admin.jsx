@@ -4,8 +4,10 @@ import { api } from "../lib/api.js";
 import Icoon from "../components/Icoon.jsx";
 import { Rugnummer } from "../components/Merk.jsx";
 import RitFormulier from "./RitFormulier.jsx";
+import Blad from "../components/Blad.jsx";
+import { welkomTekst, openMail } from "../lib/mail.js";
 import { TypeChip } from "../components/RitKaartje.jsx";
-import { datumLang, eindMoment } from "../lib/tijd.js";
+import { datumLang, eindMoment, tijdAgo } from "../lib/tijd.js";
 import { km } from "../lib/gpx.js";
 
 function Cijferslot({ onOpen }) {
@@ -67,131 +69,250 @@ function Cijferslot({ onOpen }) {
   );
 }
 
-function wachtwoordVoorstel() {
-  const woorden = ["kopgroep", "waaier", "demarrage", "bidon", "zadel", "ketting", "tempo", "klimmer", "sprint", "derailleur", "knobbel", "gravel", "polder", "dijk", "wind"];
-  const w = woorden[Math.floor(Math.random() * woorden.length)];
-  return `${w}${Math.floor(10 + Math.random() * 89)}`;
+// Na accepteren of een nieuwe code: de code groot in beeld, en de mail staat al open.
+function CodeKaart({ gegevens, onKlaar }) {
+  const { lid } = useApp();
+  const volledig = { ...gegevens, afzender: lid.naam !== "Admin" ? lid.naam : "" };
+  const tekst = welkomTekst(volledig);
+  const [gekopieerd, setGekopieerd] = useState(false);
+  useEffect(() => { const t = setTimeout(() => openMail(volledig), 350); return () => clearTimeout(t); }, []);
+  return (
+    <div className="kaart pad codekaart">
+      <div className="label">{gegevens.nieuweCode ? "Nieuwe code voor" : "Toegelaten:"} {gegevens.naam}</div>
+      <div className="code-cijfers tab" aria-label={`Code ${gegevens.code}`}>
+        {gegevens.code.split("").map((c, i) => <span key={i}>{c}</span>)}
+      </div>
+      <p className="klein" style={{ margin: "0 0 12px" }}>Je mailprogramma opent met een kant-en-klaar bericht aan <b>{gegevens.email}</b>. Druk daar alleen nog op verzenden. Ging er niets open? Gebruik dan een van de knoppen hieronder.</p>
+      <div className="knoppenrij">
+        <button className="knop primair klein" onClick={() => openMail(volledig)}><Icoon naam="mail" />Open mail</button>
+        <a className="knop klein" href={`https://wa.me/?text=${encodeURIComponent(tekst)}`} target="_blank" rel="noreferrer"><Icoon naam="chat" />WhatsApp</a>
+        <button className="knop klein" onClick={async () => { try { await navigator.clipboard.writeText(tekst); setGekopieerd(true); } catch {} }}><Icoon naam={gekopieerd ? "vink" : "kopie"} />{gekopieerd ? "Gekopieerd" : "Kopieer"}</button>
+        <button className="knop klein stil" onClick={onKlaar}>Klaar</button>
+      </div>
+    </div>
+  );
+}
+
+function Aanvragen({ onAantal }) {
+  const [lijst, setLijst] = useState(null);
+  const [gekozen, setGekozen] = useState(null);
+  const [bezig, setBezig] = useState(false);
+  const [fout, setFout] = useState("");
+  const [resultaat, setResultaat] = useState(null);
+  const [afwijzen, setAfwijzen] = useState(false);
+
+  const laad = () => api("admin/aanvragen").then((r) => { setLijst(r.aanvragen); onAantal(r.aanvragen.length); }).catch((e) => setFout(e.message));
+  useEffect(() => { laad(); }, []);
+
+  async function accepteer() {
+    setBezig(true); setFout("");
+    try {
+      const r = await api(`admin/aanvragen/${gekozen.id}/accepteer`, { methode: "POST" });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code });
+      setGekozen(null); laad();
+    } catch (e) { setFout(e.message); laad(); }
+    setBezig(false);
+  }
+  async function wijsAf() {
+    if (!afwijzen) { setAfwijzen(true); return; }
+    setBezig(true);
+    try { await api(`admin/aanvragen/${gekozen.id}`, { methode: "DELETE" }); setGekozen(null); laad(); } catch (e) { setFout(e.message); }
+    setBezig(false); setAfwijzen(false);
+  }
+
+  return (
+    <div>
+      {resultaat && <CodeKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
+      {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
+      {!lijst && <div className="skelet" style={{ height: 160 }} />}
+      {lijst && !lijst.length && !resultaat && (
+        <div className="leeg">
+          <Icoon naam="bel" className="i26" />
+          <h3>Geen nieuwe aanvragen</h3>
+          <p className="klein">Iemand die op de startpagina op Meedoen tikt, verschijnt hier. Je krijgt dan ook een melding.</p>
+        </div>
+      )}
+      <div className="ledenlijst">
+        {lijst?.map((a) => (
+          <button key={a.id} className="lidrij klikbaar" onClick={() => { setGekozen(a); setAfwijzen(false); setFout(""); }}>
+            <span className="aanvraag-avatar">{a.naam.slice(0, 1).toUpperCase()}</span>
+            <div className="lid-info">
+              <b>{a.naam}<em className="rolbadge nieuw">nieuw</em></b>
+              <span className="klein">{a.email} · {tijdAgo(a.tijd)}</span>
+            </div>
+            <Icoon naam="verder" className="i18 grijs" />
+          </button>
+        ))}
+      </div>
+
+      <Blad open={!!gekozen} onSluit={() => setGekozen(null)} titel={gekozen?.naam || ""} label="Aanvraag om mee te doen">
+        {gekozen && (
+          <div>
+            <dl className="gegevens">
+              <div><dt>E-mailadres</dt><dd>{gekozen.email}</dd></div>
+              <div><dt>Aangevraagd</dt><dd>{new Date(gekozen.tijd).toLocaleString("nl-NL", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</dd></div>
+              {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
+              {gekozen.bericht && <div><dt>Bericht</dt><dd className="bericht">“{gekozen.bericht}”</dd></div>}
+            </dl>
+            <p className="klein">Bij <b>Accepteren</b> maakt de app een persoonlijke code van 8 cijfers en opent je mailprogramma met een welkomstbericht, de code en de link naar de handleiding.</p>
+            <div className="keuze2">
+              <button className="knop primair" onClick={accepteer} disabled={bezig}><Icoon naam="vink" />Accepteren</button>
+              <button className={`knop ${afwijzen ? "gevaar" : ""}`} onClick={wijsAf} disabled={bezig}><Icoon naam="kruis" />{afwijzen ? "Zeker afwijzen?" : "Afwijzen"}</button>
+            </div>
+            {afwijzen && <p className="klein" style={{ marginTop: 10 }}>De aanvraag wordt verwijderd. Er gaat geen bericht naar de aanvrager.</p>}
+          </div>
+        )}
+      </Blad>
+    </div>
+  );
 }
 
 function Leden() {
   const { lid } = useApp();
   const [leden, setLeden] = useState(null);
+  const [ritten, setRitten] = useState([]);
   const [nieuw, setNieuw] = useState(null);
   const [melding, setMelding] = useState(null);
-  const [welkom, setWelkom] = useState(null);
-  const [bevestig, setBevestig] = useState(null);
+  const [resultaat, setResultaat] = useState(null);
+  const [gekozen, setGekozen] = useState(null);
   const [bewerk, setBewerk] = useState(null);
+  const [bevestig, setBevestig] = useState(null);
+  const [bezig, setBezig] = useState(false);
+  const [zoek, setZoek] = useState("");
 
   const laad = () => api("admin/leden").then((r) => setLeden(r.leden)).catch((e) => setMelding({ fout: e.message }));
-  useEffect(() => { laad(); }, []);
+  useEffect(() => { laad(); api("ritten").then((r) => setRitten(r.ritten)).catch(() => {}); }, []);
 
   async function voegToe(e) {
     e.preventDefault();
-    setMelding(null);
+    setMelding(null); setBezig(true);
     try {
-      await api("admin/leden", { methode: "POST", body: nieuw });
-      setWelkom({ naam: nieuw.naam, email: nieuw.email.trim().toLowerCase(), wachtwoord: nieuw.wachtwoord });
-      setNieuw(null);
-      laad();
+      const r = await api("admin/leden", { methode: "POST", body: { naam: nieuw.naam, email: nieuw.email, rol: nieuw.rol } });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code });
+      setNieuw(null); laad();
     } catch (err) { setMelding({ fout: err.message }); }
+    setBezig(false);
   }
 
-  async function verwijder(l) {
-    if (bevestig !== l.id) { setBevestig(l.id); setTimeout(() => setBevestig((b) => (b === l.id ? null : b)), 3500); return; }
-    setBevestig(null);
-    try { await api(`admin/leden/${l.id}`, { methode: "DELETE" }); setMelding({ ok: `${l.naam} is verwijderd.` }); laad(); }
+  async function nieuweCode() {
+    if (bevestig !== "code") { setBevestig("code"); return; }
+    setBezig(true);
+    try {
+      const r = await api(`admin/leden/${gekozen.id}/nieuwecode`, { methode: "POST" });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code, nieuweCode: true });
+      setGekozen(null); setBevestig(null); laad();
+    } catch (err) { setMelding({ fout: err.message }); setGekozen(null); }
+    setBezig(false);
+  }
+
+  async function verwijder() {
+    if (bevestig !== "weg") { setBevestig("weg"); return; }
+    setBezig(true);
+    try { await api(`admin/leden/${gekozen.id}`, { methode: "DELETE" }); setMelding({ ok: `${gekozen.naam} is verwijderd.` }); setGekozen(null); setBevestig(null); laad(); }
     catch (err) { setMelding({ fout: err.message }); }
+    setBezig(false);
   }
 
   async function bewaarBewerk(e) {
     e.preventDefault();
+    setBezig(true);
     try {
-      const body = { naam: bewerk.naam, email: bewerk.email, rugnummer: bewerk.rugnummer, rol: bewerk.rol };
-      if (bewerk.wachtwoord) body.wachtwoord = bewerk.wachtwoord;
-      await api(`admin/leden/${bewerk.id}`, { methode: "PUT", body });
-      if (bewerk.wachtwoord) setWelkom({ naam: bewerk.naam, email: bewerk.email, wachtwoord: bewerk.wachtwoord, reset: true });
-      else setMelding({ ok: `${bewerk.naam} is bijgewerkt.` });
-      setBewerk(null); laad();
+      await api(`admin/leden/${bewerk.id}`, { methode: "PUT", body: { naam: bewerk.naam, email: bewerk.email, rugnummer: bewerk.rugnummer, rol: bewerk.rol } });
+      setMelding({ ok: `${bewerk.naam} is bijgewerkt.` });
+      setBewerk(null); setGekozen(null); laad();
     } catch (err) { setMelding({ fout: err.message }); }
+    setBezig(false);
   }
 
-  const welkomTekst = welkom && `Hoi ${welkom.naam.split(" ")[0]}! ${welkom.reset ? "Je nieuwe startwachtwoord" : "Je account"} voor de app van Toppers Skoatterwâld:\n\n${window.location.origin}\nE-mail: ${welkom.email}\nWachtwoord: ${welkom.wachtwoord}\n\nKies na het inloggen je eigen wachtwoord via Profiel.`;
+  const statsVan = (id) => {
+    const nu = new Date();
+    const gereden = ritten.filter((r) => eindMoment(r) < nu && r.aanmeldingen.some((a) => a.lidId === id && a.status === "ja"));
+    const komend = ritten.filter((r) => eindMoment(r) >= nu && r.aanmeldingen.some((a) => a.lidId === id && a.status === "ja"));
+    return { gereden: gereden.length, km: Math.round(gereden.reduce((s, r) => s + (r.route?.afstand || 0), 0) / 1000), komend: komend.length };
+  };
+  const zichtbaar = (leden || []).filter((l) => !zoek || `${l.naam} ${l.email} ${l.rugnummer}`.toLowerCase().includes(zoek.toLowerCase()));
+  const echt = (leden || []).filter((l) => !l.demo).length;
 
   return (
     <div>
       {melding && <div className={`melding ${melding.ok ? "ok" : "fout"}`}><Icoon naam={melding.ok ? "vink" : "let"} />{melding.ok || melding.fout}</div>}
-
-      {welkom && (
-        <div className="kaart pad welkomkaart">
-          <div className="label">Inloggegevens voor {welkom.naam}</div>
-          <pre className="welkomtekst">{welkomTekst}</pre>
-          <div className="knoppenrij">
-            <a className="knop primair klein" href={`https://wa.me/?text=${encodeURIComponent(welkomTekst)}`} target="_blank" rel="noreferrer"><Icoon naam="chat" />WhatsApp</a>
-            <a className="knop klein" href={`mailto:${welkom.email}?subject=${encodeURIComponent("Je account voor Toppers Skoatterwâld")}&body=${encodeURIComponent(welkomTekst)}`}><Icoon naam="mail" />Mail</a>
-            <button className="knop klein" onClick={() => navigator.clipboard?.writeText(welkomTekst)}><Icoon naam="kopie" />Kopieer</button>
-            <button className="knop klein stil" onClick={() => setWelkom(null)}>Klaar</button>
-          </div>
-        </div>
-      )}
+      {resultaat && <CodeKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
 
       {!nieuw ? (
-        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", wachtwoord: wachtwoordVoorstel(), rol: "lid" }); setWelkom(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
+        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", rol: "lid" }); setResultaat(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
       ) : (
         <form className="kaart pad" onSubmit={voegToe}>
-          <h3 style={{ marginBottom: 14 }}>Nieuwe fietser</h3>
+          <h3 style={{ marginBottom: 6 }}>Nieuwe fietser</h3>
+          <p className="klein" style={{ marginTop: 0 }}>De app maakt een code van 8 cijfers en opent je mail met een welkomstbericht.</p>
           <label className="veld"><span>Naam</span><input className="invoer" required value={nieuw.naam} onChange={(e) => setNieuw({ ...nieuw, naam: e.target.value })} autoFocus /></label>
           <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" required value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></label>
-          <label className="veld"><span>Startwachtwoord</span>
-            <div className="wachtwoordveld"><input className="invoer" required minLength={6} value={nieuw.wachtwoord} onChange={(e) => setNieuw({ ...nieuw, wachtwoord: e.target.value })} /><button type="button" className="toon" onClick={() => setNieuw({ ...nieuw, wachtwoord: wachtwoordVoorstel() })}>Nieuw</button></div>
-          </label>
           <label className="schakelaar"><input type="checkbox" checked={nieuw.rol === "admin"} onChange={(e) => setNieuw({ ...nieuw, rol: e.target.checked ? "admin" : "lid" })} /><span />Ook organisatie (admin)</label>
           <div className="knoppenrij" style={{ marginTop: 14 }}>
-            <button className="knop primair">Toevoegen</button>
+            <button className="knop primair" disabled={bezig}>Toevoegen en mailen</button>
             <button type="button" className="knop stil" onClick={() => setNieuw(null)}>Annuleren</button>
           </div>
         </form>
       )}
 
+      <div className="leden-kop">
+        <span className="label tab">{echt} {echt === 1 ? "fietser" : "fietsers"} doen mee</span>
+        {leden?.length > 6 && <input className="invoer zoekveld" placeholder="Zoek op naam of nummer" value={zoek} onChange={(e) => setZoek(e.target.value)} />}
+      </div>
       <div className="ledenlijst">
         {!leden && <div className="skelet" style={{ height: 200 }} />}
-        {leden?.map((l) => (
-          <div key={l.id} className="lidrij">
-            {bewerk?.id === l.id ? (
-              <form className="lid-bewerk" onSubmit={bewaarBewerk}>
-                <div className="rij2">
-                  <label className="veld"><span>Naam</span><input className="invoer" value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} /></label>
-                  <label className="veld"><span>Rugnummer</span><input className="invoer" type="number" min={1} max={999} value={bewerk.rugnummer} onChange={(e) => setBewerk({ ...bewerk, rugnummer: e.target.value })} /></label>
-                </div>
-                <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></label>
-                <label className="veld"><span>Nieuw startwachtwoord (leeg = ongewijzigd)</span>
-                  <div className="wachtwoordveld"><input className="invoer" value={bewerk.wachtwoord} minLength={6} onChange={(e) => setBewerk({ ...bewerk, wachtwoord: e.target.value })} /><button type="button" className="toon" onClick={() => setBewerk({ ...bewerk, wachtwoord: wachtwoordVoorstel() })}>Maak</button></div>
-                </label>
-                {l.id !== lid.id && <label className="schakelaar"><input type="checkbox" checked={bewerk.rol === "admin"} onChange={(e) => setBewerk({ ...bewerk, rol: e.target.checked ? "admin" : "lid" })} /><span />Organisatie (admin)</label>}
-                <div className="knoppenrij" style={{ marginTop: 12 }}>
-                  <button className="knop primair klein">Opslaan</button>
-                  <button type="button" className="knop klein stil" onClick={() => setBewerk(null)}>Annuleren</button>
-                </div>
-              </form>
-            ) : (
-              <>
-                <Rugnummer nummer={l.rugnummer} schaal={0.85} demo={l.demo} />
-                <div className="lid-info">
-                  <b>{l.naam}{l.rol === "admin" && <em className="rolbadge">admin</em>}{l.demo && <em className="rolbadge demo">demo</em>}</b>
-                  <span className="klein">{l.demo ? "voorbeeldrenner, kan niet inloggen" : l.email}{l.wachtwoordStandaard && !l.demo ? " · startwachtwoord" : ""}</span>
-                </div>
-                <div className="lid-knoppen">
-                  <button className="icoonknop" onClick={() => setBewerk({ ...l, wachtwoord: "" })} aria-label={`${l.naam} bewerken`}><Icoon naam="bewerk" /></button>
-                  {l.id !== lid.id && (
-                    <button className={`icoonknop ${bevestig === l.id ? "bevestig" : ""}`} onClick={() => verwijder(l)} aria-label={`${l.naam} verwijderen`}>
-                      {bevestig === l.id ? <span>Zeker?</span> : <Icoon naam="prullenbak" />}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+        {zichtbaar.map((l) => (
+          <button key={l.id} className="lidrij klikbaar" onClick={() => { setGekozen(l); setBevestig(null); setBewerk(null); }}>
+            <Rugnummer nummer={l.rugnummer} schaal={0.85} demo={l.demo} />
+            <div className="lid-info">
+              <b>{l.naam}{l.rol === "admin" && <em className="rolbadge">admin</em>}{l.demo && <em className="rolbadge demo">demo</em>}</b>
+              <span className="klein">{l.demo ? "voorbeeldrenner, kan niet inloggen" : l.email}{l.wachtwoordStandaard && !l.demo ? " · code nog niet gewijzigd" : ""}</span>
+            </div>
+            <Icoon naam="verder" className="i18 grijs" />
+          </button>
         ))}
       </div>
+
+      <Blad open={!!gekozen} onSluit={() => { setGekozen(null); setBewerk(null); setBevestig(null); }} titel={gekozen?.naam || ""} label={gekozen ? `Rugnummer ${gekozen.rugnummer}` : ""}>
+        {gekozen && !bewerk && (() => {
+          const st = statsVan(gekozen.id);
+          return (
+            <div>
+              <dl className="gegevens">
+                <div><dt>E-mailadres</dt><dd>{gekozen.demo ? "voorbeeldrenner" : gekozen.email}</dd></div>
+                <div><dt>Rol</dt><dd>{gekozen.rol === "admin" ? "Organisatie (admin)" : "Fietser"}</dd></div>
+                {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
+                <div><dt>Doet mee sinds</dt><dd>{gekozen.aangemaakt ? new Date(gekozen.aangemaakt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "onbekend"}</dd></div>
+                <div><dt>Ritten</dt><dd className="tab">{st.gereden} gereden · {st.km} km · {st.komend} aangemeld</dd></div>
+                <div><dt>Inloggen</dt><dd>{gekozen.demo ? "kan niet inloggen" : gekozen.wachtwoordStandaard ? "met de code uit de mail" : "met een eigen wachtwoord"}</dd></div>
+              </dl>
+              {!gekozen.demo && (
+                <>
+                  <button className={`knop vol ${bevestig === "code" ? "primair" : ""}`} onClick={nieuweCode} disabled={bezig}><Icoon naam="mail" />{bevestig === "code" ? "Ja, maak en mail een nieuwe code" : "Nieuwe code sturen"}</button>
+                  {bevestig === "code" && <p className="klein" style={{ margin: "8px 0 0" }}>De huidige code of het eigen wachtwoord van {gekozen.naam.split(" ")[0]} werkt daarna niet meer.</p>}
+                </>
+              )}
+              <div className="keuze2" style={{ marginTop: 10 }}>
+                <button className="knop" onClick={() => setBewerk({ ...gekozen })}><Icoon naam="bewerk" />Bewerken</button>
+                {gekozen.id !== lid.id && <button className={`knop ${bevestig === "weg" ? "gevaar" : ""}`} onClick={verwijder} disabled={bezig}><Icoon naam="prullenbak" />{bevestig === "weg" ? "Zeker?" : "Verwijderen"}</button>}
+              </div>
+            </div>
+          );
+        })()}
+        {gekozen && bewerk && (
+          <form onSubmit={bewaarBewerk}>
+            <div className="rij2">
+              <label className="veld"><span>Naam</span><input className="invoer" value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} /></label>
+              <label className="veld"><span>Rugnummer</span><input className="invoer" type="number" min={1} max={999} value={bewerk.rugnummer} onChange={(e) => setBewerk({ ...bewerk, rugnummer: e.target.value })} /></label>
+            </div>
+            {!bewerk.demo && <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></label>}
+            {bewerk.id !== lid.id && !bewerk.demo && <label className="schakelaar"><input type="checkbox" checked={bewerk.rol === "admin"} onChange={(e) => setBewerk({ ...bewerk, rol: e.target.checked ? "admin" : "lid" })} /><span />Organisatie (admin)</label>}
+            <div className="keuze2" style={{ marginTop: 14 }}>
+              <button className="knop primair" disabled={bezig}>Opslaan</button>
+              <button type="button" className="knop stil" onClick={() => setBewerk(null)}>Terug</button>
+            </div>
+          </form>
+        )}
+      </Blad>
     </div>
   );
 }
@@ -249,6 +370,22 @@ function Instellingen() {
     } catch (err) { setMelding({ fout: err.message }); }
   }
 
+  const [melder, setMelder] = useState(sessie.meldingsEmail || "");
+  const [melderBezig, setMelderBezig] = useState(false);
+  const [melderInfo, setMelderInfo] = useState(null);
+  async function bewaarMelding(e) {
+    e.preventDefault();
+    setMelderBezig(true); setMelderInfo(null);
+    try {
+      const r = await api("admin/meldingen", { methode: "PUT", body: { email: melder } });
+      setSessie({ ...sessie, meldingsEmail: r.meldingsEmail });
+      if (!r.meldingsEmail) setMelderInfo({ ok: true, tekst: "Meldingen per e-mail staan uit. Nieuwe aanvragen zie je nog wel in de app." });
+      else if (r.test?.verstuurd) setMelderInfo({ ok: true, tekst: `Opgeslagen. Er is een testmail onderweg naar ${r.meldingsEmail}. Is dit een nieuw adres? Klik dan één keer op de bevestigingslink in de eerste mail (van FormSubmit), daarna komen alle meldingen binnen.` });
+      else setMelderInfo({ ok: false, tekst: "Opgeslagen, maar de testmail kon nu niet worden verstuurd. Nieuwe aanvragen zie je in elk geval in de app." });
+    } catch (err) { setMelderInfo({ ok: false, tekst: err.message }); }
+    setMelderBezig(false);
+  }
+
   async function laadDemo() {
     setDemo("laden");
     try {
@@ -282,6 +419,14 @@ function Instellingen() {
         <button className="knop primair vol">Code wijzigen</button>
       </form>
 
+      <form className="kaart pad" style={{ marginTop: 16 }} onSubmit={bewaarMelding}>
+        <h3>Meldingen per e-mail</h3>
+        <p className="klein">Op dit adres krijg je een mail zodra iemand op de startpagina op <b>Meedoen</b> tikt. Je kunt het altijd wijzigen, bijvoorbeeld naar het adres van een andere organisator.</p>
+        <label className="veld"><span>E-mailadres voor meldingen</span><input className="invoer" type="email" value={melder} onChange={(e) => setMelder(e.target.value)} placeholder="organisatie@voorbeeld.nl" /></label>
+        <button className="knop primair vol" disabled={melderBezig}>{melderBezig ? "Opslaan…" : "Opslaan en testmail sturen"}</button>
+        {melderInfo && <div className={`melding ${melderInfo.ok ? "ok" : "let"}`} style={{ marginTop: 12, marginBottom: 0 }}><Icoon naam={melderInfo.ok ? "vink" : "info"} /><span>{melderInfo.tekst}</span></div>}
+      </form>
+
       <div className="kaart pad" style={{ marginTop: 16 }}>
         <h3>Voorbeeldinhoud</h3>
         <p className="klein">Drie voorbeeldritten rond Heerenveen met voorbeeldrenners en een paar berichten, handig om de app te laten zien. Alles is gemarkeerd als demo en met één knop weer weg.</p>
@@ -302,7 +447,7 @@ function Instellingen() {
 
 export default function Admin({ deel }) {
   const { sessie, setSessie, ga } = useApp();
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "ritten");
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || (sessie.aanvragen > 0 ? "aanvragen" : "ritten"));
 
   if (!sessie.adminOpen) {
     return <Cijferslot onOpen={(r) => setSessie({ ...sessie, adminOpen: true, codeStandaard: r.codeStandaard })} />;
@@ -318,20 +463,24 @@ export default function Admin({ deel }) {
         <span className="label"><Icoon naam="open" className="i16" /> Ontgrendeld</span>
         <h1>Organisatie</h1>
       </header>
-      {(sessie.codeStandaard || sessie.lid.wachtwoordStandaard) && (
+      {(sessie.codeStandaard || sessie.lid.wachtwoordStandaard || !sessie.meldingsEmail) && (
         <div className="melding let">
           <Icoon naam="let" />
           <div>
             {sessie.codeStandaard && <div>De admincode is nog de standaardcode. <button className="linkknop" onClick={() => kies("instellingen")}>Wijzig de code.</button></div>}
             {sessie.lid.wachtwoordStandaard && <div>Je wachtwoord is nog het startwachtwoord. <button className="linkknop" onClick={() => ga("/profiel")}>Wijzig je wachtwoord.</button></div>}
+            {!sessie.meldingsEmail && <div>Er is nog geen e-mailadres voor meldingen over nieuwe aanvragen. <button className="linkknop" onClick={() => kies("instellingen")}>Stel het in.</button></div>}
           </div>
         </div>
       )}
-      <div className="segment" role="tablist">
-        {[["ritten", "Ritten"], ["leden", "Fietsers"], ["instellingen", "Instellingen"]].map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "aan" : ""} onClick={() => kies(k)}>{l}</button>
+      <div className="segment vier" role="tablist">
+        {[["aanvragen", "Aanvragen"], ["ritten", "Ritten"], ["leden", "Fietsers"], ["instellingen", "Instellingen"]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "aan" : ""} onClick={() => kies(k)}>
+            {l}{k === "aanvragen" && sessie.aanvragen > 0 && <em className="segment-badge">{sessie.aanvragen}</em>}
+          </button>
         ))}
       </div>
+      {tab === "aanvragen" && <Aanvragen onAantal={(n) => setSessie((s) => ({ ...s, aanvragen: n }))} />}
       {tab === "ritten" && <RittenBeheer />}
       {tab === "leden" && <Leden />}
       {tab === "instellingen" && <Instellingen />}

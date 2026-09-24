@@ -43,12 +43,22 @@ export default function App() {
   const herlaadIk = useCallback(async () => {
     try {
       const r = await api("ik");
-      setSessie({ laden: false, lid: r.lid, adminOpen: r.adminOpen, codeStandaard: r.codeStandaard });
+      setSessie({ laden: false, lid: r.lid, adminOpen: r.adminOpen, codeStandaard: r.codeStandaard, aanvragen: r.aanvragen || 0, meldingsEmail: r.meldingsEmail || "" });
     } catch (e) {
       setSessie({ laden: false, lid: null, fout: e.status === 401 ? null : e.message });
     }
   }, []);
   useEffect(() => { herlaadIk(); }, [herlaadIk]);
+
+  // Admins: elke minuut kijken of er nieuwe aanvragen om mee te doen zijn.
+  useEffect(() => {
+    if (sessie.lid?.rol !== "admin") return;
+    const t = setInterval(async () => {
+      if (document.hidden) return;
+      try { const r = await api("ik"); setSessie((s) => ({ ...s, aanvragen: r.aanvragen || 0, adminOpen: r.adminOpen })); } catch {}
+    }, 60000);
+    return () => clearInterval(t);
+  }, [sessie.lid?.rol]);
 
   // Ongelezen berichten tellen, ook als je niet in de chat zit.
   useEffect(() => {
@@ -90,7 +100,7 @@ export default function App() {
     { id: "peloton", naar: "/peloton", label: "Peloton", icoon: "chat", badge: ongelezen },
     { id: "profiel", naar: "/profiel", label: "Profiel", icoon: "profiel" },
   ];
-  if (lid.rol === "admin") tabs.push({ id: "admin", naar: "/admin", label: "Admin", icoon: sessie.adminOpen ? "open" : "admin" });
+  if (lid.rol === "admin") tabs.push({ id: "admin", naar: "/admin", label: "Admin", icoon: sessie.adminOpen ? "open" : "admin", badge: sessie.aanvragen });
 
   return (
     <AppContext.Provider value={{ lid, sessie, setSessie, herlaadIk, ga, pad }}>

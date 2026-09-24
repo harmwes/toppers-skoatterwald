@@ -31,6 +31,39 @@ function eigen(lid) {
   return { ...publiek(lid), email: lid.email, wachtwoordStandaard: !!lid.wachtwoordStandaard };
 }
 
+// Inlogcode van 8 cijfers, cryptografisch willekeurig.
+function nieuweCode() {
+  const b = crypto.getRandomValues(new Uint32Array(2));
+  return String((b[0] % 90000000) + 10000000);
+}
+
+// Mail naar de organisatie bij een nieuwe aanvraag, via FormSubmit (geen account of sleutel nodig).
+// Het adres stelt de admin zelf in; een nieuw adres moet één keer bevestigd worden via de eerste mail.
+async function meldAanvraag(cfg, a, test = false) {
+  if (!cfg.meldingsEmail) return { verstuurd: false, reden: "geen adres" };
+  try {
+    const r = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(cfg.meldingsEmail)}`, {
+      method: "POST", signal: AbortSignal.timeout(7000),
+      headers: { "content-type": "application/json", accept: "application/json", referer: "https://toppers-skoatterwald.netlify.app/", origin: "https://toppers-skoatterwald.netlify.app" },
+      body: JSON.stringify({
+        _subject: test ? "Toppers Skoatterwâld: testmelding" : `Toppers Skoatterwâld: ${a.naam} wil meedoen`,
+        _template: "table", _captcha: "false",
+        Naam: a.naam, "E-mailadres": a.email, Fietst: (a.fietsen || []).join(", ") || "-", Bericht: a.bericht || "-",
+        Actie: test ? "Dit is een test vanuit de app. Meldingen komen op dit adres binnen." : "Open de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen: https://toppers-skoatterwald.netlify.app/admin?tab=aanvragen",
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    return { verstuurd: r.ok, antwoord: j.message || r.status };
+  } catch (e) { return { verstuurd: false, reden: String(e) }; }
+}
+
+async function alleAanvragen() {
+  const store = db();
+  const { blobs } = await store.list({ prefix: "aanvragen/" });
+  const rijen = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  return rijen.filter(Boolean).sort((a, b) => a.tijd.localeCompare(b.tijd));
+}
+
 async function alleLeden() {
   const store = db();
   const { blobs } = await store.list({ prefix: "leden/" });
@@ -132,6 +165,36 @@ export default async (req) => {
       return json({ lid: eigen(lid) }, 200, { "set-cookie": [await maakSessie(lid), wisCookie(ADMIN_COOKIE)] });
     }
 
+    // ---------- Meedoen: aanvraag zonder account ----------
+    if (pad === "aanvraag" && m === "POST") {
+      const b = await leesBody(req);
+      if (b.website) return json({ ok: true }); // honingpot tegen spam
+      const ip = req.headers.get("x-nf-client-connection-ip") || req.headers.get("x-forwarded-for") || "onbekend";
+      const rem = await remPoging("aanvraag:" + ip);
+      if (rem.geblokkeerd) return fout("Te veel aanvragen vanaf dit adres. Probeer het later opnieuw.", 429);
+      await rem.fout();
+      const naam = tekst(b.naam, 60);
+      if (!naam) return fout("Vul je naam in.");
+      if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
+      const email = b.email.trim().toLowerCase();
+      const open = await alleAanvragen();
+      if (open.length >= 100) return fout("Er staan al veel aanvragen open. Probeer het later opnieuw.", 429);
+      const bestaand = open.find((a) => a.email === email);
+      const lid = await vindOpEmail(email);
+      if (!lid) {
+        const id = bestaand?.id || nieuwId(10);
+        const aanvraag = {
+          id, naam, email, bericht: tekst(b.bericht, 400),
+          fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
+          tijd: new Date().toISOString(),
+        };
+        await store.setJSON(`aanvragen/${id}`, aanvraag);
+        if (!bestaand) await meldAanvraag(await leesConfig(), aanvraag);
+      }
+      // Altijd hetzelfde antwoord, zodat niemand kan uitzoeken wie er al lid is.
+      return json({ ok: true });
+    }
+
     if (pad === "logout" && m === "POST") {
       return json({ ok: true }, 200, { "set-cookie": [wisCookie(SESSIE_COOKIE), wisCookie(ADMIN_COOKIE)] });
     }
@@ -143,7 +206,8 @@ export default async (req) => {
     // ---------- Eigen profiel ----------
     if (pad === "ik" && m === "GET") {
       const cfg = await leesConfig();
-      return json({ lid: eigen(lid), adminOpen: await adminOntgrendeld(req, lid), codeStandaard: lid.rol === "admin" ? !!cfg.codeStandaard : undefined });
+      const aanvragen = lid.rol === "admin" ? (await alleAanvragen()).length : undefined;
+      return json({ lid: eigen(lid), adminOpen: await adminOntgrendeld(req, lid), codeStandaard: lid.rol === "admin" ? !!cfg.codeStandaard : undefined, aanvragen, meldingsEmail: lid.rol === "admin" ? cfg.meldingsEmail || "" : undefined });
     }
 
     if (pad === "ik" && m === "PUT") {
@@ -308,6 +372,57 @@ export default async (req) => {
         return json({ ok: true }, 200, { "set-cookie": [await maakAdminSessie(lid)] });
       }
 
+      if (pad === "admin/meldingen" && m === "PUT") {
+        const b = await leesBody(req);
+        const adres = tekst(b.email, 200).toLowerCase();
+        if (adres && !emailOk(adres)) return fout("Dit is geen geldig e-mailadres.");
+        const cfg = await leesConfig();
+        cfg.meldingsEmail = adres;
+        await bewaarConfig(cfg);
+        const test = adres ? await meldAanvraag(cfg, { naam: "Testmelding", email: adres, bericht: "" }, true) : null;
+        return json({ ok: true, meldingsEmail: adres, test });
+      }
+
+      if (pad === "admin/aanvragen" && m === "GET") {
+        return json({ aanvragen: await alleAanvragen() });
+      }
+
+      if (deel[1] === "aanvragen" && deel[2] && deel[3] === "accepteer" && m === "POST") {
+        const a = await store.get(`aanvragen/${deel[2]}`, { type: "json" });
+        if (!a) return fout("Deze aanvraag bestaat niet meer.", 404);
+        if (await vindOpEmail(a.email)) {
+          await store.delete(`aanvragen/${a.id}`);
+          return fout("Er is al een account met dit e-mailadres. Stuur die persoon een nieuwe code via Fietsers.");
+        }
+        const leden = await alleLeden();
+        const code = nieuweCode();
+        const nieuw = {
+          id: nieuwId(10), naam: a.naam, email: a.email, rol: "lid",
+          rugnummer: Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
+          fietsen: a.fietsen || [], wachtwoord: await hashGeheim(code), wachtwoordStandaard: true,
+          aangemaakt: new Date().toISOString(), viaAanvraag: true,
+        };
+        await store.setJSON(`leden/${nieuw.id}`, nieuw);
+        await store.delete(`aanvragen/${a.id}`);
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email }, code });
+      }
+
+      if (deel[1] === "aanvragen" && deel[2] && m === "DELETE") {
+        await store.delete(`aanvragen/${deel[2]}`);
+        return json({ ok: true });
+      }
+
+      if (deel[1] === "leden" && deel[2] && deel[3] === "nieuwecode" && m === "POST") {
+        const doel = await store.get(`leden/${deel[2]}`, { type: "json" });
+        if (!doel) return fout("Lid niet gevonden.", 404);
+        if (doel.demo) return fout("Voorbeeldrenners kunnen niet inloggen.");
+        const code = nieuweCode();
+        doel.wachtwoord = await hashGeheim(code);
+        doel.wachtwoordStandaard = true;
+        await store.setJSON(`leden/${doel.id}`, doel);
+        return json({ lid: { ...publiek(doel), email: doel.email }, code });
+      }
+
       if (pad === "admin/leden" && m === "GET") {
         return json({ leden: (await alleLeden()).map((l) => ({ ...publiek(l), email: l.email, wachtwoordStandaard: !!l.wachtwoordStandaard, aangemaakt: l.aangemaakt })) });
       }
@@ -318,16 +433,16 @@ export default async (req) => {
         if (!naam) return fout("Vul een naam in.");
         if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
         if (await vindOpEmail(b.email)) return fout("Dit e-mailadres is al in gebruik.");
-        if (typeof b.wachtwoord !== "string" || b.wachtwoord.length < 6) return fout("Kies een startwachtwoord van minstens 6 tekens.");
+        const code = typeof b.wachtwoord === "string" && b.wachtwoord.length >= 6 ? b.wachtwoord : nieuweCode();
         const leden = await alleLeden();
         const nieuw = {
           id: nieuwId(10), naam, email: b.email.trim().toLowerCase(), rol: b.rol === "admin" ? "admin" : "lid",
           rugnummer: Number(b.rugnummer) || Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
           fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
-          wachtwoord: await hashGeheim(b.wachtwoord), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
+          wachtwoord: await hashGeheim(code), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
         };
         await store.setJSON(`leden/${nieuw.id}`, nieuw);
-        return json({ lid: publiek(nieuw) });
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email }, code });
       }
 
       if (deel[1] === "leden" && deel[2] && m === "PUT") {
