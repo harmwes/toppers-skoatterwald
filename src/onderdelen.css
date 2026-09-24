@@ -45,6 +45,9 @@
 /* ---------- Ritten ---------- */
 .ritten-kop { display: flex; align-items: flex-end; justify-content: space-between; margin: 6px 0 18px; gap: 12px; }
 .groet { text-align: right; }
+.ritten-voet { margin: 34px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; color: var(--grijs); }
+.ritten-voet .rv-regel { display: inline-flex; align-items: center; gap: 6px; }
+.ritten-voet b { font-family: var(--kop); font-weight: 700; letter-spacing: .04em; color: var(--krijt-2); }
 @media (min-width: 980px) { .ritten-kop { justify-content: flex-start; } .groet { text-align: left; } }
 .melding.klikbaar { width: 100%; text-align: left; border-style: solid; cursor: pointer; }
 .filters { margin-bottom: 16px; }

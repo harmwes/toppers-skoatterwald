@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
-import { Logo } from "../components/Merk.jsx";
+import { Logo, Pompeblad } from "../components/Merk.jsx";
+import { version } from "../../package.json";
 import { VolledigSchermKnop, HandleidingKnop, UitlogKnop } from "../components/Hulpknoppen.jsx";
 import Icoon from "../components/Icoon.jsx";
 import RitKaartje, { LuieKaart, TypeChip, Rijders, MijnStatus } from "../components/RitKaartje.jsx";
 import { WeerChip } from "../components/Weer.jsx";
 import { TYPES, startMoment, eindMoment, aftellen, datumLang, relatief, hhmm } from "../lib/tijd.js";
 import { km } from "../lib/gpx.js";
+
+const VERSIE = version.split(".").slice(0, 2).join(".");
 
 function groet(naam) {
   const u = new Date().getHours();
@@ -159,6 +162,11 @@ export default function Ritten() {
           )}
         </>
       )}
+
+      <footer className="ritten-voet klein">
+        <span className="rv-regel"><Pompeblad className="pompeblad i14" />Toppers Skoatterwâld <b className="tab">v{VERSIE}</b></span>
+        <span>Een idee van ploegleider Harm</span>
+      </footer>
     </div>
   );
 }
