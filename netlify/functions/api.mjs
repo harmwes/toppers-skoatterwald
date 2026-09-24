@@ -160,6 +160,28 @@ async function leesBody(req) {
   try { return await req.json(); } catch { return {}; }
 }
 
+// Alle voorbeeldinhoud weghalen. Alles tegelijk, en een fout bij één onderdeel houdt de rest niet tegen.
+async function wisVoorbeelden(store) {
+  const lees = async (prefix) => {
+    const { blobs } = await store.list({ prefix });
+    const rijen = await Promise.allSettled(blobs.map((b) => store.get(b.key, { type: "json" })));
+    return blobs.map((b, i) => ({ key: b.key, data: rijen[i].status === "fulfilled" ? rijen[i].value : null }));
+  };
+  const [leden, ritten, chat, aanm] = await Promise.all([lees("leden/"), lees("ritten/"), lees("chat/"), store.list({ prefix: "aanmelding/" })]);
+  const demoLeden = new Set(leden.filter((x) => x.data?.demo).map((x) => x.data.id));
+  const demoRitten = new Set(ritten.filter((x) => x.data?.demo).map((x) => x.data.id));
+  const weg = [
+    ...[...demoRitten].flatMap((id) => [`ritten/${id}`, `gpx/${id}`]),
+    ...aanm.blobs.map((b) => b.key).filter((k) => { const [, r, l] = k.split("/"); return demoRitten.has(r) || demoLeden.has(l); }),
+    ...chat.filter((x) => x.data && (x.data.demo || demoLeden.has(x.data.lidId))).map((x) => x.key),
+    ...[...demoLeden].map((id) => `leden/${id}`),
+  ];
+  const uit = await Promise.allSettled(weg.map((k) => store.delete(k)));
+  const mislukt = uit.filter((u) => u.status === "rejected").length;
+  if (mislukt) console.error("wisVoorbeelden: niet alles verwijderd", mislukt);
+  return { ritten: demoRitten.size, leden: demoLeden.size, berichten: chat.filter((x) => x.data && (x.data.demo || demoLeden.has(x.data.lidId))).length, mislukt };
+}
+
 export default async (req) => {
   const url = new URL(req.url);
   const pad = url.pathname.replace(/^\/api\/?/, "").replace(/\/$/, "");
@@ -581,26 +603,12 @@ export default async (req) => {
       }
 
       if (pad === "admin/demo" && m === "DELETE") {
-        const leden = await alleLeden();
-        const demoLeden = leden.filter((l) => l.demo);
-        const { blobs } = await store.list({ prefix: "ritten/" });
-        const ritten = (await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })))).filter((r) => r && r.demo);
-        for (const r of ritten) {
-          await store.delete(`ritten/${r.id}`); await store.delete(`gpx/${r.id}`);
-        }
-        const aanm = await store.list({ prefix: "aanmelding/" });
-        const weg = new Set([...demoLeden.map((l) => l.id)]);
-        const ritWeg = new Set(ritten.map((r) => r.id));
-        await Promise.all(aanm.blobs.filter((b) => { const [, rId, lId] = b.key.split("/"); return weg.has(lId) || ritWeg.has(rId); }).map((b) => store.delete(b.key)));
-        const chat = await store.list({ prefix: "chat/" });
-        const chatRijen = await Promise.all(chat.blobs.map((b) => store.get(b.key, { type: "json" })));
-        await Promise.all(chatRijen.filter((c) => c && (c.demo || weg.has(c.lidId))).map((c) => store.delete(`chat/${c.id}`)));
-        await Promise.all(demoLeden.map((l) => store.delete(`leden/${l.id}`)));
-        return json({ ok: true, ritten: ritten.length, leden: demoLeden.length });
+        return json({ ok: true, ...(await wisVoorbeelden(store)) });
       }
 
       if (pad === "admin/demo" && m === "POST") {
         const b = await leesBody(req);
+        await wisVoorbeelden(store); // nooit dubbele voorbeelden: eerst alles oude weg
         // Voorbeeldinhoud: ritten met GPX, demoleden en aanmeldingen.
         const leden = await alleLeden();
         let volgend = Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1;
@@ -608,7 +616,7 @@ export default async (req) => {
         for (const d of b.leden || []) {
           const id = "demo-" + nieuwId(6);
           idMap[d.sleutel] = id;
-          await store.setJSON(`leden/${id}`, { id, naam: tekst(d.naam, 60), email: `${id}@demo.invalid`, rol: "lid", rugnummer: volgend++, fietsen: d.fietsen || [], wachtwoord: await hashGeheim(nieuwId(16)), demo: true, aangemaakt: new Date().toISOString() });
+          await store.setJSON(`leden/${id}`, { id, naam: tekst(d.naam, 60), email: `${id}@demo.invalid`, rol: "lid", rugnummer: volgend++, fietsen: d.fietsen || [], wachtwoord: { salt: nieuwId(16), hash: nieuwId(32) }, demo: true, aangemaakt: new Date().toISOString() });
         }
         idMap.admin = lid.id;
         for (const r of b.ritten || []) {

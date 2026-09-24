@@ -1,5 +1,5 @@
 // Service worker: app-schil offline beschikbaar, API altijd live.
-const VERSIE = "toppers-v2";
+const VERSIE = "toppers-v3";
 const SCHIL = ["/", "/manifest.webmanifest", "/icoon.svg", "/icoon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -19,14 +19,23 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(fetch(e.request).catch(() => caches.match("/")));
     return;
   }
-  // Eigen bestanden (ook de lettertypen): cache met verversen op de achtergrond.
-  if (url.origin === location.origin) {
+  // Vaste bestanden met een versie in de naam (scripts, stijlen, lettertypen) en iconen: eerst uit de cache.
+  if (url.origin === location.origin && (url.pathname.startsWith("/assets/") || /\.(png|svg|woff2?)$/.test(url.pathname))) {
     e.respondWith(
       caches.open(VERSIE).then(async (c) => {
         const oud = await c.match(e.request);
-        const nieuw = fetch(e.request).then((r) => { if (r.ok || r.type === "opaque") c.put(e.request, r.clone()); return r; }).catch(() => oud);
+        const nieuw = fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => oud);
         return oud || nieuw;
       })
+    );
+    return;
+  }
+  // Overige eigen bestanden (handleiding, voorbeelden, manifest): altijd de nieuwste, cache alleen als reserve.
+  if (url.origin === location.origin) {
+    e.respondWith(
+      caches.open(VERSIE).then((c) =>
+        fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => c.match(e.request))
+      )
     );
   }
 });

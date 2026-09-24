@@ -452,7 +452,7 @@ function Instellingen() {
   async function laadDemo() {
     setDemo("laden");
     try {
-      const data = await (await fetch("/demo.json")).json();
+      const data = await (await fetch("/demo.json", { cache: "no-store" })).json();
       // Verschuif de voorbeeldritten naar komende weekenden, zodat ze altijd actueel zijn.
       const vandaag = new Date();
       data.ritten.forEach((r) => {
@@ -465,7 +465,7 @@ function Instellingen() {
   }
   async function wisDemo() {
     setDemo("wissen");
-    try { const r = await api("admin/demo", { methode: "DELETE" }); setDemo(null); setMelding({ ok: `Voorbeeldinhoud verwijderd (${r.ritten} ritten, ${r.leden} renners).` }); }
+    try { const r = await api("admin/demo", { methode: "DELETE" }); setDemo(null); setMelding(r.mislukt ? { fout: `Niet alles kon worden verwijderd. Tik nog een keer op Verwijder voorbeelden.` } : { ok: `Voorbeeldinhoud verwijderd: ${r.ritten} ritten, ${r.leden} renners en ${r.berichten} berichten.` }); }
     catch (e) { setDemo(null); setMelding({ fout: e.message }); }
   }
 
