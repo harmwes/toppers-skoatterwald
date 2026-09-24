@@ -1,5 +1,5 @@
 // Service worker: app-schil offline beschikbaar, API altijd live.
-const VERSIE = "toppers-v1";
+const VERSIE = "toppers-v2";
 const SCHIL = ["/", "/manifest.webmanifest", "/icoon.svg", "/icoon-192.png"];
 
 self.addEventListener("install", (e) => {

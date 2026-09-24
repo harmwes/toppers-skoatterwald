@@ -3,8 +3,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { windKleur } from "../lib/weer.js";
 
-const TEGELS = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-const BRON = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const TEGELS = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const BRON = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 const TYPEKLEUR = { race: "#ff4d3d", gravel: "#e8b15a", atb: "#5ccf8a" };
 
 export default function RouteKaart({ route, type = "race", wind, toonWind = false, afhaak, markeer, interactief = true, className = "", kmMarkers = false, onKlaar }) {
@@ -29,7 +29,8 @@ export default function RouteKaart({ route, type = "race", wind, toonWind = fals
       tap: false,
       zoomSnap: 0.25,
     });
-    L.tileLayer(TEGELS, { attribution: BRON, subdomains: "abcd", maxZoom: 19, detectRetina: true }).addTo(k);
+    // OpenStreetMap-kaart, met een filter donker gemaakt zodat hij in de koersstijl past.
+    L.tileLayer(TEGELS, { attribution: BRON, maxZoom: 19, className: "donkere-tegels" }).addTo(k);
     k.attributionControl.setPrefix(false);
     lagen.current = L.layerGroup().addTo(k);
     kaart.current = k;

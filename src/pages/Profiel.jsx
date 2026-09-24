@@ -161,7 +161,7 @@ export default function Profiel() {
 
       <footer className="over">
         <Pompeblad className="pompeblad i20" />
-        <p><b>Toppers Skoatterwâld</b><br />Een idee van Harm, voor de hele groep.<br /><span className="klein">Weer: Open-Meteo · Kaart: OpenStreetMap en CARTO</span></p>
+        <p><b>Toppers Skoatterwâld</b><br />Een idee van Harm, voor de hele groep.<br /><span className="klein">Weer: Open-Meteo · Kaart: OpenStreetMap</span></p>
       </footer>
     </div>
   );

@@ -24,8 +24,9 @@ Wijzig het wachtwoord en de code direct na de eerste keer inloggen. De app herin
 
 - React 18 en Vite, zonder UI-framework, met eigen CSS
 - Netlify Functions (`netlify/functions/api.mjs`) en Netlify Blobs voor de opslag
-- Leaflet met kaarttegels van OpenStreetMap en CARTO
+- Leaflet met kaarttegels van OpenStreetMap (donker gefilterd)
 - Weer van Open-Meteo, zonder API-sleutel
+- Lettertypen (Barlow) worden door de site zelf geleverd, niet via Google
 - Installeerbaar als PWA (manifest en service worker)
 
 Wachtwoorden en de admincode worden opgeslagen met scrypt. Sessies zijn ondertekende HttpOnly-cookies. De adminsessie verloopt na twee uur en vervalt zodra de code wordt gewijzigd.
