@@ -1,5 +1,6 @@
 // Toppers Skoatterwald: alle API-routes onder /api/.
 import { db } from "../lib/store.mjs";
+import { gunzipSync, gzipSync } from "node:zlib";
 import {
   config as leesConfig, bewaarConfig, hashGeheim, klopt, nieuwId, huidigLid, maakSessie, wisCookie,
   maakAdminSessie, adminOntgrendeld, remPoging, SESSIE_COOKIE, ADMIN_COOKIE,
@@ -7,7 +8,16 @@ import {
 
 const TYPES = ["race", "gravel", "atb"];
 const STATUS = ["ja", "nee", "misschien"];
-const MAX_GPX = 5 * 1024 * 1024;
+const MAX_GPX = 30 * 1024 * 1024; // uitgepakt
+
+// GPX komt als tekst, of ingepakt (gzip, base64) voor grote bestanden.
+function gpxTekst(g) {
+  if (!g) return null;
+  if (typeof g.gz === "string") {
+    try { return gunzipSync(Buffer.from(g.gz, "base64"), { maxOutputLength: MAX_GPX }).toString("utf8"); } catch { return null; }
+  }
+  return typeof g.tekst === "string" ? g.tekst : null;
+}
 const MAX_FOTO = 4 * 1024 * 1024;
 
 function json(data, status = 200, headers = {}) {
@@ -184,9 +194,9 @@ export default async (req) => {
       if (!lid) {
         const id = bestaand?.id || nieuwId(10);
         const aanvraag = {
-          id, naam, email, bericht: tekst(b.bericht, 400),
-          fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
-          tijd: new Date().toISOString(),
+          id, naam, email, bericht: tekst(b.bericht, 400) || bestaand?.bericht || "",
+          fietsen: Array.isArray(b.fietsen) && b.fietsen.length ? b.fietsen.filter((f) => TYPES.includes(f)) : bestaand?.fietsen || [],
+          tijd: bestaand?.tijd || new Date().toISOString(),
         };
         await store.setJSON(`aanvragen/${id}`, aanvraag);
         if (!bestaand) await meldAanvraag(await leesConfig(), aanvraag);
@@ -266,13 +276,16 @@ export default async (req) => {
       const gpx = rit && (await store.get(`gpx/${deel[1]}`));
       if (!gpx) return fout("Geen GPX gevonden.", 404);
       const naam = (rit.gpxNaam || `${rit.titel}.gpx`).replace(/[^\w.\- ]+/g, "_");
-      return new Response(gpx, {
-        headers: {
-          "content-type": "application/gpx+xml; charset=utf-8",
-          "content-disposition": `attachment; filename="${naam.endsWith(".gpx") ? naam : naam + ".gpx"}"`,
-          "cache-control": "private, max-age=300",
-        },
-      });
+      const kop = {
+        "content-type": "application/gpx+xml; charset=utf-8",
+        "content-disposition": `attachment; filename="${naam.endsWith(".gpx") ? naam : naam + ".gpx"}"`,
+        "cache-control": "private, max-age=300",
+      };
+      // Grote bestanden ingepakt versturen: de browser pakt ze vanzelf uit.
+      if (gpx.length > 1500000 && /gzip/.test(req.headers.get("accept-encoding") || "")) {
+        return new Response(gzipSync(Buffer.from(gpx, "utf8")), { headers: { ...kop, "content-encoding": "gzip", vary: "accept-encoding" } });
+      }
+      return new Response(gpx, { headers: kop });
     }
 
     if (deel[0] === "ritten" && deel[2] === "aanmelding" && m === "PUT") {
@@ -483,14 +496,15 @@ export default async (req) => {
         const b = await leesBody(req);
         const { rit, fout: f } = ritVelden(b);
         if (f) return fout(f);
-        if (!b.gpx || typeof b.gpx.tekst !== "string") return fout("Voeg een GPX-bestand toe.");
-        if (b.gpx.tekst.length > MAX_GPX) return fout("Het GPX-bestand is groter dan 5 MB.");
-        if (!/<gpx[\s>]/i.test(b.gpx.tekst)) return fout("Dit lijkt geen GPX-bestand.");
+        const gTekst = gpxTekst(b.gpx);
+        if (!gTekst) return fout("Voeg een GPX-bestand toe.");
+        if (gTekst.length > MAX_GPX) return fout("Het GPX-bestand is te groot.");
+        if (!/<gpx[\s>]/i.test(gTekst.slice(0, 5000))) return fout("Dit lijkt geen GPX-bestand.");
         const route = schoonRoute(b.route);
         if (!route) return fout("In dit GPX-bestand staat geen bruikbare route.");
         const id = nieuwId(8);
         const nieuw = { ...rit, id, route, gpxNaam: tekst(b.gpx.naam, 120) || `${rit.titel}.gpx`, gemaaktDoor: lid.naam, aangemaakt: new Date().toISOString() };
-        await store.set(`gpx/${id}`, b.gpx.tekst);
+        await store.set(`gpx/${id}`, gTekst);
         await store.setJSON(`ritten/${id}`, nieuw);
         return json({ rit: nieuw });
       }
@@ -501,13 +515,15 @@ export default async (req) => {
         const b = await leesBody(req);
         const { rit, fout: f } = ritVelden(b, bestaand);
         if (f) return fout(f);
-        if (b.gpx && typeof b.gpx.tekst === "string") {
-          if (b.gpx.tekst.length > MAX_GPX) return fout("Het GPX-bestand is groter dan 5 MB.");
+        const gNieuw = gpxTekst(b.gpx);
+        if (gNieuw) {
+          if (gNieuw.length > MAX_GPX) return fout("Het GPX-bestand is te groot.");
+          if (!/<gpx[\s>]/i.test(gNieuw.slice(0, 5000))) return fout("Dit lijkt geen GPX-bestand.");
           const route = schoonRoute(b.route);
           if (!route) return fout("In dit GPX-bestand staat geen bruikbare route.");
           rit.route = route;
           rit.gpxNaam = tekst(b.gpx.naam, 120) || `${rit.titel}.gpx`;
-          await store.set(`gpx/${rit.id}`, b.gpx.tekst);
+          await store.set(`gpx/${rit.id}`, gNieuw);
         }
         rit.bijgewerkt = new Date().toISOString();
         await store.setJSON(`ritten/${rit.id}`, rit);

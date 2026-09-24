@@ -43,9 +43,10 @@ function rdp(pts, eps) {
 export function leesGpx(tekst) {
   const doc = new DOMParser().parseFromString(tekst, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("Dit bestand is geen geldige GPX.");
-  let nodes = [...doc.getElementsByTagName("trkpt")];
-  if (!nodes.length) nodes = [...doc.getElementsByTagName("rtept")];
-  if (!nodes.length) nodes = [...doc.getElementsByTagName("wpt")];
+  const alle = (t) => [...doc.getElementsByTagNameNS("*", t)];
+  let nodes = alle("trkpt");
+  if (!nodes.length) nodes = alle("rtept");
+  if (!nodes.length) nodes = alle("wpt");
   if (nodes.length < 2) throw new Error("In dit GPX-bestand staat geen route.");
   const naamEl = doc.querySelector("trk > name, rte > name, metadata > name");
   const ruw = [];
@@ -53,11 +54,63 @@ export function leesGpx(tekst) {
     const lat = parseFloat(n.getAttribute("lat"));
     const lon = parseFloat(n.getAttribute("lon"));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const eleEl = n.getElementsByTagName("ele")[0];
+    const eleEl = n.getElementsByTagNameNS("*", "ele")[0];
     const ele = eleEl ? parseFloat(eleEl.textContent) : null;
     ruw.push([lat, lon, Number.isFinite(ele) ? ele : null]);
   }
   return bouwRoute(ruw, naamEl?.textContent?.trim() || "");
+}
+
+// Maak een nette GPX van punten (voor bestanden die als TCX of KML binnenkomen).
+export function maakGpx(naam, ruw) {
+  const esc = (t) => String(t).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Toppers Skoatterwald" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata><name>${esc(naam)}</name></metadata>
+  <trk><name>${esc(naam)}</name><trkseg>
+${ruw.map((p) => `    <trkpt lat="${p[0]}" lon="${p[1]}">${p[2] != null ? `<ele>${p[2]}</ele>` : ""}</trkpt>`).join("\n")}
+  </trkseg></trk>
+</gpx>
+`;
+}
+
+// Leest een routebestand: GPX (Komoot, Strava, Garmin, RideWithGPS, Wahoo), TCX (Garmin) of KML (Google My Maps).
+// Geeft altijd GPX-tekst terug, zodat iedereen een GPX kan downloaden.
+export function leesRouteBestand(tekst, bestandsnaam = "") {
+  const kop = tekst.slice(0, 4000);
+  if (tekst.slice(8, 12) === ".FIT" || /\.fit$/i.test(bestandsnaam)) {
+    throw new Error("Dit is een FIT-bestand (een opgenomen rit). Exporteer de route als GPX, bijvoorbeeld via Garmin Connect, Strava of Komoot.");
+  }
+  if (/<gpx[\s>]/i.test(kop)) {
+    const route = leesGpx(tekst);
+    return { route, gpxTekst: tekst, naam: bestandsnaam || `${route.naam || "route"}.gpx` };
+  }
+  const doc = new DOMParser().parseFromString(tekst, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("Dit bestand kan ik niet lezen. Gebruik een GPX-bestand.");
+  let ruw = [], naam = "";
+  if (/<TrainingCenterDatabase/i.test(kop)) {
+    for (const tp of doc.getElementsByTagName("Trackpoint")) {
+      const lat = parseFloat(tp.getElementsByTagName("LatitudeDegrees")[0]?.textContent);
+      const lon = parseFloat(tp.getElementsByTagName("LongitudeDegrees")[0]?.textContent);
+      const ele = parseFloat(tp.getElementsByTagName("AltitudeMeters")[0]?.textContent);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) ruw.push([lat, lon, Number.isFinite(ele) ? ele : null]);
+    }
+    naam = doc.getElementsByTagName("Name")[0]?.textContent?.trim() || doc.getElementsByTagName("Id")[0]?.textContent?.trim() || "";
+  } else if (/<kml[\s>]/i.test(kop)) {
+    for (const c of doc.getElementsByTagName("coordinates")) {
+      for (const t of c.textContent.trim().split(/\s+/)) {
+        const [lon, lat, ele] = t.split(",").map(Number);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) ruw.push([lat, lon, Number.isFinite(ele) && ele !== 0 ? ele : null]);
+      }
+    }
+    naam = doc.getElementsByTagName("name")[0]?.textContent?.trim() || "";
+  } else {
+    throw new Error("Dit is geen GPX-bestand. Exporteer de route als GPX uit Komoot, Strava, Garmin of RideWithGPS.");
+  }
+  if (ruw.length < 2) throw new Error("In dit bestand staat geen route.");
+  const basis = (bestandsnaam || naam || "route").replace(/\.(tcx|kml)$/i, "");
+  const route = bouwRoute(ruw, naam);
+  return { route, gpxTekst: maakGpx(naam || basis, ruw), naam: `${basis}.gpx` };
 }
 
 export function bouwRoute(ruw, naam = "") {

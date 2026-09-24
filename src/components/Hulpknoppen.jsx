@@ -8,11 +8,18 @@ export const HANDLEIDING = "/handleiding.pdf";
 
 export function VolledigSchermKnop({ className = "" }) {
   const vs = useVolledigScherm();
-  if (!kanVolledigScherm()) return null;
+  const [uitleg, setUitleg] = useState(false);
+  const [geinstalleerd] = useState(() => isGeinstalleerd());
+  const echt = kanVolledigScherm();
+  if (geinstalleerd) return null; // als app op het beginscherm is hij al schermvullend
   return (
-    <button className={`hulpknop ${className}`} onClick={vs.wissel} aria-label={vs.aan ? "Volledig scherm uit" : "Volledig scherm"} title={vs.aan ? "Volledig scherm uit" : "Volledig scherm"}>
-      <Icoon naam={vs.aan ? "kleinscherm" : "volscherm"} />
-    </button>
+    <>
+      <button className={`hulpknop ${className}`} onClick={() => (echt ? vs.wissel() : setUitleg(true))} aria-label={vs.aan ? "Volledig scherm uit" : "Volledig scherm"} title={vs.aan ? "Volledig scherm uit" : "Volledig scherm"}>
+        <Icoon naam={vs.aan ? "kleinscherm" : "volscherm"} />
+      </button>
+      {/* iPhone en iPad kennen geen volledig-schermknop: leg uit hoe het wel kan. */}
+      {!echt && <InstallerenBlad open={uitleg} onSluit={() => setUitleg(false)} volledigScherm />}
+    </>
   );
 }
 
@@ -24,12 +31,13 @@ export function HandleidingKnop({ className = "" }) {
   );
 }
 
-export function InstallerenBlad({ open, onSluit }) {
+export function InstallerenBlad({ open, onSluit, volledigScherm = false }) {
   const inst = useInstalleren();
   const [klaar, setKlaar] = useState(false);
   const ios = isIOS();
   return (
-    <Blad open={open} onSluit={onSluit} titel="Zet Toppers op je telefoon" label="App installeren">
+    <Blad open={open} onSluit={onSluit} titel={volledigScherm ? "Volledig scherm" : "Zet Toppers op je telefoon"} label={volledigScherm ? "Op iPhone en iPad" : "App installeren"}>
+      {volledigScherm && <p className="meedoen-intro">Safari op iPhone en iPad heeft geen knop voor volledig scherm. Zet Toppers op je beginscherm: dan opent hij altijd schermvullend, zonder adresbalk.</p>}
       <div className="inst-held">
         <img src="/icoon-192.png" alt="" className="inst-icoon" />
         <p>Dan opent Toppers als een echte app: met een eigen icoon, schermvullend en zonder adresbalk. Er komt niets uit een app store aan te pas.</p>

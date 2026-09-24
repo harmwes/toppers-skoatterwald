@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
-import { leesGpx, km } from "../lib/gpx.js";
+import { leesRouteBestand, km } from "../lib/gpx.js";
 import { TYPES, rijduurMin, duurTekst } from "../lib/tijd.js";
 import Icoon, { TypeIcoon } from "../components/Icoon.jsx";
 import RouteKaart from "../components/RouteKaart.jsx";
@@ -32,14 +32,26 @@ export default function RitFormulier({ id }) {
   async function leesBestand(f) {
     if (!f) return;
     setFout("");
-    if (f.size > 5 * 1024 * 1024) return setFout("Dit GPX-bestand is groter dan 5 MB.");
+    if (f.size > 25 * 1024 * 1024) return setFout("Dit bestand is groter dan 25 MB. Exporteer de route opnieuw, zonder hartslag- of vermogensgegevens.");
     try {
       const tekst = await f.text();
-      const r = leesGpx(tekst);
-      setRoute(r);
-      setGpx({ naam: f.name, tekst });
-      if (!rit.titel && r.naam) setRit((x) => ({ ...x, titel: r.naam.slice(0, 80) }));
+      const r = leesRouteBestand(tekst, f.name);
+      setRoute(r.route);
+      setGpx({ naam: r.naam, tekst: r.gpxTekst });
+      if (!rit.titel && r.route.naam) setRit((x) => ({ ...x, titel: r.route.naam.slice(0, 80) }));
     } catch (e) { setFout(e.message); }
+  }
+
+  // GPX-bestanden kunnen groot zijn; ingepakt (gzip) passen ze ruim binnen de uploadgrens.
+  async function inpakken(g) {
+    if (typeof CompressionStream === "undefined" || g.tekst.length < 200000) return g;
+    try {
+      const stroom = new Blob([g.tekst]).stream().pipeThrough(new CompressionStream("gzip"));
+      const buf = new Uint8Array(await new Response(stroom).arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode(...buf.subarray(i, i + 32768));
+      return { naam: g.naam, gz: btoa(bin) };
+    } catch { return g; }
   }
 
   async function bewaar(e) {
@@ -49,7 +61,7 @@ export default function RitFormulier({ id }) {
     setBezig(true);
     try {
       const body = { titel: rit.titel, type: rit.type, datum: rit.datum, starttijd: rit.starttijd, startplek: rit.startplek, omschrijving: rit.omschrijving, tempo: rit.tempo || null };
-      if (gpx) { body.gpx = gpx; body.route = route; }
+      if (gpx) { body.gpx = await inpakken(gpx); body.route = route; }
       const r = await api(id ? `admin/ritten/${id}` : "admin/ritten", { methode: id ? "PUT" : "POST", body });
       ga(`/rit/${r.rit.id}`, { vervang: true });
     } catch (err) { setFout(err.message); setBezig(false); }
@@ -90,10 +102,10 @@ export default function RitFormulier({ id }) {
               <button type="button" className="gpxdrop-knop" onClick={() => bestand.current?.click()}>
                 <Icoon naam="upload" />
                 <b>GPX uploaden</b>
-                <span className="klein">Tik om een bestand te kiezen, of sleep het hierheen. Uit Komoot, Strava, Garmin of RideWithGPS.</span>
+                <span className="klein">Tik om een bestand te kiezen, of sleep het hierheen. GPX uit Komoot, Strava, Garmin, Wahoo of RideWithGPS. TCX en KML kan ook.</span>
               </button>
             )}
-            <input ref={bestand} type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden onChange={(e) => { leesBestand(e.target.files?.[0]); e.target.value = ""; }} />
+            <input ref={bestand} type="file" hidden onChange={(e) => { leesBestand(e.target.files?.[0]); e.target.value = ""; }} />
           </div>
         </div>
 

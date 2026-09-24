@@ -47,7 +47,7 @@ export function useInstalleren() {
 
 export function kanVolledigScherm() {
   const el = document.documentElement;
-  return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(el.requestFullscreen || el.webkitRequestFullscreen) && !isGeinstalleerd();
+  return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(el.requestFullscreen || el.webkitRequestFullscreen);
 }
 
 export function useVolledigScherm() {

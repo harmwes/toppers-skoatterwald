@@ -82,7 +82,7 @@ export default function App() {
     return <div className="opstart"><Logo groot /></div>;
   }
   if (!sessie.lid) {
-    return <Login fout={sessie.fout} onIngelogd={(lid) => { setSessie({ laden: false, lid }); ga("/", { vervang: true }); herlaadIk(); }} />;
+    return <Login fout={sessie.fout} onIngelogd={(lid) => { history.replaceState(null, "", "/"); setPad("/"); setSessie({ laden: false, lid }); herlaadIk(); }} />;
   }
 
   const lid = sessie.lid;

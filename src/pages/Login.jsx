@@ -89,7 +89,6 @@ export default function Login({ onIngelogd, fout: startFout }) {
         {Array.from({ length: 7 }).map((_, i) => <line key={i} className="lr-snel" x1={-60 + i * 30} y1={140 + i * 36} x2={140 + i * 40} y2={140 + i * 36} style={{ animationDelay: `${i * 0.18}s` }} />)}
       </svg>
       <div className="login-hulp-rij">
-        <InstallerenKnop tekst={false} />
         <HandleidingKnop />
         <VolledigSchermKnop />
       </div>

@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 process.env.LOCAL_STORE_DIR ||= path.join(root, ".local-store");
 const { default: api } = await import(path.join(root, "netlify/functions/api.mjs"));
 const dist = path.join(root, "dist");
-const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json", ".woff2": "font/woff2" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".png": "image/png", ".webmanifest": "application/manifest+json", ".json": "application/json", ".woff2": "font/woff2", ".pdf": "application/pdf" };
 const port = Number(process.env.PORT || 8888);
 
 http.createServer(async (req, res) => {
