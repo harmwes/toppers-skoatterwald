@@ -107,10 +107,11 @@ export async function versleutelBestaande() {
   return n;
 }
 
-let cached;
+// Let op: op Netlify hoort bij elke aanvraag een nieuw, tijdelijk toegangsbewijs voor Blobs.
+// Daarom maken we de opslag per aanvraag opnieuw aan (dat is goedkoop) en bewaren we hem niet.
+let lokaal;
 export function db() {
-  if (cached) return cached;
   const local = process.env.LOCAL_STORE_DIR;
-  cached = metVersleuteling(local ? fileStore(local) : getStore({ name: "toppers-skoatterwald", consistency: "strong" }));
-  return cached;
+  if (local) return (lokaal ||= metVersleuteling(fileStore(local)));
+  return metVersleuteling(getStore({ name: "toppers-skoatterwald", consistency: "strong" }));
 }
