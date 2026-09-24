@@ -1,7 +1,7 @@
 // Wachtwoorden, sessies en de admincode.
 import crypto from "node:crypto";
 import { promisify } from "node:util";
-import { db } from "./store.mjs";
+import { db, versleutelingAan, versleutelBestaande } from "./store.mjs";
 
 const scrypt = promisify(crypto.scrypt);
 
@@ -25,6 +25,8 @@ export async function klopt(geheim, salt, hash) {
 export function nieuwId(lengte = 10) {
   return crypto.randomBytes(lengte).toString("base64url").slice(0, lengte);
 }
+
+let migratieGedaan = false;
 
 // Config met geheime sleutel, admincode en de eerste admin.
 export async function config() {
@@ -53,6 +55,12 @@ export async function config() {
       aangemaakt: new Date().toISOString(),
     };
     if (!(await store.get("leden/admin"))) await store.setJSON("leden/admin", admin);
+  }
+  if (!cfg.versleuteld && versleutelingAan() && !migratieGedaan) {
+    migratieGedaan = true;
+    await versleutelBestaande();
+    cfg.versleuteld = true;
+    await store.setJSON("config", cfg);
   }
   return cfg;
 }
