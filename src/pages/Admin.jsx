@@ -421,6 +421,8 @@ function Instellingen() {
   const [code, setCode] = useState({ nieuw: "", herhaal: "" });
   const [melding, setMelding] = useState(null);
   const [demo, setDemo] = useState(null);
+  const [heeftDemo, setHeeftDemo] = useState(false);
+  useEffect(() => { api("leden").then((r) => setHeeftDemo(r.leden.some((l) => l.demo))).catch(() => {}); }, []);
 
   async function wijzigCode(e) {
     e.preventDefault();
@@ -449,23 +451,9 @@ function Instellingen() {
     setMelderBezig(false);
   }
 
-  async function laadDemo() {
-    setDemo("laden");
-    try {
-      const data = await (await fetch("/demo.json", { cache: "no-store" })).json();
-      // Verschuif de voorbeeldritten naar komende weekenden, zodat ze altijd actueel zijn.
-      const vandaag = new Date();
-      data.ritten.forEach((r) => {
-        const d = new Date(vandaag); d.setDate(d.getDate() + r.dagenVanaf);
-        r.datum = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      });
-      await api("admin/demo", { methode: "POST", body: data });
-      setDemo("klaar");
-    } catch (e) { setDemo(null); setMelding({ fout: e.message }); }
-  }
   async function wisDemo() {
     setDemo("wissen");
-    try { const r = await api("admin/demo", { methode: "DELETE" }); setDemo(null); setMelding(r.mislukt ? { fout: `Niet alles kon worden verwijderd. Tik nog een keer op Verwijder voorbeelden.` } : { ok: `Voorbeeldinhoud verwijderd: ${r.ritten} ritten, ${r.leden} renners en ${r.berichten} berichten.` }); }
+    try { const r = await api("admin/demo", { methode: "DELETE" }); setDemo(r.mislukt ? null : "weg"); setMelding(r.mislukt ? { fout: `Niet alles kon worden verwijderd. Tik nog een keer op Verwijder voorbeelden.` } : { ok: `Voorbeeldinhoud verwijderd: ${r.ritten} ritten, ${r.leden} renners en ${r.berichten} berichten.` }); }
     catch (e) { setDemo(null); setMelding({ fout: e.message }); }
   }
 
@@ -492,14 +480,13 @@ function Instellingen() {
 
       <FotoBeheer />
 
-      <div className="kaart pad" style={{ marginTop: 16 }}>
-        <h3>Voorbeeldinhoud</h3>
-        <p className="klein">Drie voorbeeldritten rond Heerenveen met voorbeeldrenners en een paar berichten, handig om de app te laten zien. Alles is gemarkeerd als demo en met één knop weer weg.</p>
-        <div className="knoppenrij">
-          <button className="knop klein" onClick={laadDemo} disabled={!!demo}>{demo === "laden" ? "Bezig…" : demo === "klaar" ? "Geladen" : "Laad voorbeelden"}</button>
-          <button className="knop klein gevaar" onClick={wisDemo} disabled={demo === "wissen"}>Verwijder voorbeelden</button>
+      {heeftDemo && demo !== "weg" && (
+        <div className="kaart pad" style={{ marginTop: 16 }}>
+          <h3>Voorbeeldinhoud</h3>
+          <p className="klein">Er staan nog voorbeeldritten, voorbeeldrenners en berichten in de app. Ga je zelf ritten plannen? Haal ze dan met één knop weg. Daarna verdwijnt deze kaart.</p>
+          <button className="knop klein gevaar" onClick={wisDemo} disabled={demo === "wissen"}>{demo === "wissen" ? "Bezig…" : "Verwijder voorbeelden"}</button>
         </div>
-      </div>
+      )}
 
       <form className="kaart pad" style={{ marginTop: 16 }} onSubmit={async (e) => { e.preventDefault(); await api("admin/vergrendel", { methode: "POST" }); setSessie({ ...sessie, adminOpen: false }); }}>
         <h3>Admin vergrendelen</h3>

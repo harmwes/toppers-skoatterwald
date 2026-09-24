@@ -346,8 +346,9 @@ export default async (req) => {
     if (pad === "chat" && m === "GET") {
       const na = url.searchParams.get("na") || "";
       const { blobs } = await store.list({ prefix: "chat/" });
-      let sleutels = blobs.map((b) => b.key).sort();
-      if (na) sleutels = sleutels.filter((k) => k > `chat/${na}`);
+      const volg = (k) => parseFloat(k.replace(/^chat\//, "").split("-")[0]) || 0;
+      let sleutels = blobs.map((b) => b.key).sort((x, y) => volg(x) - volg(y) || (x < y ? -1 : 1));
+      if (na) { const grens = volg(`chat/${na}`); sleutels = sleutels.filter((k) => volg(k) > grens || (volg(k) === grens && k > `chat/${na}`)); }
       sleutels = sleutels.slice(-80);
       const berichten = (await Promise.all(sleutels.map((k) => store.get(k, { type: "json" })))).filter(Boolean);
       return json({ berichten });
@@ -606,42 +607,6 @@ export default async (req) => {
         return json({ ok: true, ...(await wisVoorbeelden(store)) });
       }
 
-      if (pad === "admin/demo" && m === "POST") {
-        const b = await leesBody(req);
-        await wisVoorbeelden(store); // nooit dubbele voorbeelden: eerst alles oude weg
-        // Voorbeeldinhoud: ritten met GPX, demoleden en aanmeldingen.
-        const leden = await alleLeden();
-        let volgend = Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1;
-        const idMap = {};
-        for (const d of b.leden || []) {
-          const id = "demo-" + nieuwId(6);
-          idMap[d.sleutel] = id;
-          await store.setJSON(`leden/${id}`, { id, naam: tekst(d.naam, 60), email: `${id}@demo.invalid`, rol: "lid", rugnummer: volgend++, fietsen: d.fietsen || [], wachtwoord: { salt: nieuwId(16), hash: nieuwId(32) }, demo: true, aangemaakt: new Date().toISOString() });
-        }
-        idMap.admin = lid.id;
-        for (const r of b.ritten || []) {
-          const { rit, fout: f } = ritVelden(r);
-          if (f) continue;
-          const route = schoonRoute(r.route);
-          if (!route) continue;
-          const id = nieuwId(8);
-          await store.set(`gpx/${id}`, r.gpx.tekst);
-          await store.setJSON(`ritten/${id}`, { ...rit, id, route, gpxNaam: r.gpx.naam, gemaaktDoor: lid.naam, demo: true, aangemaakt: new Date().toISOString() });
-          for (const a of r.aanmeldingen || []) {
-            const lidId = idMap[a.sleutel];
-            if (lidId) await store.setJSON(`aanmelding/${id}/${lidId}`, { ritId: id, lidId, status: a.status, thuis: a.thuis || null, notitie: a.notitie || "", bijgewerkt: new Date().toISOString() });
-          }
-        }
-        let t = Date.now() - (b.chat || []).length * 3600e3;
-        for (const c of b.chat || []) {
-          const lidId = idMap[c.sleutel]; if (!lidId) continue;
-          const l = await store.get(`leden/${lidId}`, { type: "json" });
-          const id = `${String(t).padStart(14, "0")}-${nieuwId(6)}`;
-          await store.setJSON(`chat/${id}`, { id, lidId, naam: l.naam, rugnummer: l.rugnummer, tekst: c.tekst, fotoId: null, tijd: new Date(t).toISOString(), demo: true });
-          t += 3600e3 * (0.3 + Math.random());
-        }
-        return json({ ok: true });
-      }
     }
 
     return fout("Onbekende route.", 404);

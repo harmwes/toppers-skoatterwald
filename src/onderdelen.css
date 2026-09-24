@@ -496,3 +496,4 @@ html { overflow-x: clip; }
 .fotoblad-img { width: 100%; max-height: 52dvh; object-fit: contain; border-radius: 14px; background: #000; margin-bottom: 10px; display: block; }
 .uitlog-tekst { margin: 0 0 16px; color: var(--krijt-2); line-height: 1.5; }
 .blad-achter { text-align: left; }
+.bubbel.tikbaar { cursor: pointer; -webkit-tap-highlight-color: transparent; }

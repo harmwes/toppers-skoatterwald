@@ -150,7 +150,7 @@ export default function Peloton({ onGelezen }) {
                 {!eigen && <div className="afzender">{!vervolg && <Rugnummer nummer={b.rugnummer} schaal={0.7} />}</div>}
                 <div className="bubbel-wrap">
                   {!eigen && !vervolg && <div className="naam">{b.naam}</div>}
-                  <div className="bubbel" onClick={() => (eigen || lid.rol === "admin") && setMenu(menu === b.id ? null : b.id)}>
+                  <div className={`bubbel ${eigen || lid.rol === "admin" ? "tikbaar" : ""}`} {...(eigen || lid.rol === "admin" ? { role: "button", tabIndex: 0, "aria-label": "Opties voor dit bericht", onKeyDown: (e) => e.key === "Enter" && setMenu(menu === b.id ? null : b.id) } : {})} onClick={() => (eigen || lid.rol === "admin") && setMenu(menu === b.id ? null : b.id)}>
                     {rit && <button className="ritlabel" onClick={(e) => { e.stopPropagation(); ga(`/rit/${rit.id}`); }}><Icoon naam="vlag" className="i14" />{rit.titel}</button>}
                     {b.fotoId && (
                       <button className="bubbelfoto" style={{ aspectRatio: b.fotoVorm || 4 / 3 }} onClick={(e) => { e.stopPropagation(); setGroot(b); }} aria-label="Foto vergroten">
