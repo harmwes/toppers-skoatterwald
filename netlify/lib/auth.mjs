@@ -58,8 +58,9 @@ export async function config() {
     if (!(await store.get("leden/admin"))) await store.setJSON("leden/admin", admin);
   }
   // Eenmalig startadres voor meldingen over nieuwe aanvragen (alleen live, alleen als er nog nooit een adres is gekozen).
-  if (cfg.meldingsEmail === undefined && !process.env.LOCAL_STORE_DIR) {
+  if (!cfg.meldingsStart && !cfg.meldingsEmail && !process.env.LOCAL_STORE_DIR) {
     cfg.meldingsEmail = STANDAARD_MELDINGSADRES;
+    cfg.meldingsStart = true;
     await store.setJSON("config", cfg);
   }
   if (!cfg.versleuteld && versleutelingAan() && !migratieGedaan) {
