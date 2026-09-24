@@ -38,7 +38,17 @@ function publiek(lid) {
   return { id: lid.id, naam: lid.naam, rugnummer: lid.rugnummer, rol: lid.rol, fietsen: lid.fietsen || [], demo: !!lid.demo };
 }
 function eigen(lid) {
-  return { ...publiek(lid), email: lid.email, wachtwoordStandaard: !!lid.wachtwoordStandaard };
+  return { ...publiek(lid), email: lid.email, mobiel: lid.mobiel || "", wachtwoordStandaard: !!lid.wachtwoordStandaard };
+}
+// Mobiel nummer, alleen zichtbaar voor jezelf en de admin. Opgeslagen als +31612345678.
+// Geeft "" voor leeg, null voor ongeldig.
+function mobielNummer(v) {
+  if (v == null || String(v).trim() === "") return "";
+  let t = String(v).trim().replace(/[\s().-]/g, "");
+  if (t.startsWith("00")) t = "+" + t.slice(2);
+  else if (t.startsWith("0")) t = "+31" + t.slice(1);
+  else if (!t.startsWith("+")) t = "+" + t;
+  return /^\+[1-9]\d{7,14}$/.test(t) ? t : null;
 }
 
 // Inlogcode van 8 cijfers, cryptografisch willekeurig.
@@ -187,6 +197,8 @@ export default async (req) => {
       if (!naam) return fout("Vul je naam in.");
       if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
       const email = b.email.trim().toLowerCase();
+      const mobiel = mobielNummer(b.mobiel);
+      if (mobiel === null) return fout("Dit mobiele nummer klopt niet. Laat het leeg of vul bijvoorbeeld 06 12345678 in.");
       const open = await alleAanvragen();
       if (open.length >= 100) return fout("Er staan al veel aanvragen open. Probeer het later opnieuw.", 429);
       const bestaand = open.find((a) => a.email === email);
@@ -194,7 +206,7 @@ export default async (req) => {
       if (!lid) {
         const id = bestaand?.id || nieuwId(10);
         const aanvraag = {
-          id, naam, email, bericht: tekst(b.bericht, 400) || bestaand?.bericht || "",
+          id, naam, email, mobiel: mobiel || bestaand?.mobiel || "", bericht: tekst(b.bericht, 400) || bestaand?.bericht || "",
           fietsen: Array.isArray(b.fietsen) && b.fietsen.length ? b.fietsen.filter((f) => TYPES.includes(f)) : bestaand?.fietsen || [],
           tijd: bestaand?.tijd || new Date().toISOString(),
         };
@@ -229,6 +241,11 @@ export default async (req) => {
         nieuw.naam = naam;
       }
       if (Array.isArray(b.fietsen)) nieuw.fietsen = b.fietsen.filter((f) => TYPES.includes(f));
+      if (b.mobiel !== undefined) {
+        const mob = mobielNummer(b.mobiel);
+        if (mob === null) return fout("Dit mobiele nummer klopt niet. Vul bijvoorbeeld 06 12345678 in.");
+        nieuw.mobiel = mob;
+      }
       if (b.email !== undefined && b.email.trim().toLowerCase() !== lid.email.toLowerCase()) {
         if (!emailOk(b.email)) return fout("Dit is geen geldig e-mailadres.");
         if (!(await klopt(b.huidigWachtwoord || "", lid.wachtwoord.salt, lid.wachtwoord.hash))) return fout("Je huidige wachtwoord klopt niet.", 403);
@@ -335,7 +352,18 @@ export default async (req) => {
       return json({ bericht });
     }
 
-    if (deel[0] === "chat" && deel[1] && m === "DELETE") {
+    if (deel[0] === "chat" && deel[1] && deel[2] === "foto" && m === "DELETE") {
+      const bericht = await store.get(`chat/${deel[1]}`, { type: "json" });
+      if (!bericht) return json({ ok: true });
+      if (bericht.lidId !== lid.id && lid.rol !== "admin") return fout("Je kunt alleen je eigen foto's verwijderen.", 403);
+      if (bericht.fotoId) await store.delete(`foto/${bericht.fotoId}`);
+      if (!bericht.tekst) { await store.delete(`chat/${bericht.id}`); return json({ ok: true, weg: true }); }
+      const nieuw = { ...bericht, fotoId: null, fotoVorm: null, fotoWeg: lid.id === bericht.lidId ? "zelf" : "organisatie" };
+      await store.setJSON(`chat/${bericht.id}`, nieuw);
+      return json({ ok: true, bericht: nieuw });
+    }
+
+    if (deel[0] === "chat" && deel[1] && !deel[2] && m === "DELETE") {
       const bericht = await store.get(`chat/${deel[1]}`, { type: "json" });
       if (!bericht) return json({ ok: true });
       if (bericht.lidId !== lid.id && lid.rol !== "admin") return fout("Je kunt alleen je eigen berichten verwijderen.", 403);
@@ -396,6 +424,13 @@ export default async (req) => {
         return json({ ok: true, meldingsEmail: adres, test });
       }
 
+      if (pad === "admin/fotos" && m === "GET") {
+        const { blobs } = await store.list({ prefix: "chat/" });
+        const rijen = (await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })))).filter((b) => b && b.fotoId);
+        rijen.sort((x, y) => (x.id < y.id ? 1 : -1));
+        return json({ fotos: rijen.map((b) => ({ id: b.id, fotoId: b.fotoId, fotoVorm: b.fotoVorm, naam: b.naam, tekst: b.tekst, tijd: b.tijd })) });
+      }
+
       if (pad === "admin/aanvragen" && m === "GET") {
         return json({ aanvragen: await alleAanvragen() });
       }
@@ -410,14 +445,14 @@ export default async (req) => {
         const leden = await alleLeden();
         const code = nieuweCode();
         const nieuw = {
-          id: nieuwId(10), naam: a.naam, email: a.email, rol: "lid",
+          id: nieuwId(10), naam: a.naam, email: a.email, mobiel: a.mobiel || "", rol: "lid",
           rugnummer: Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
           fietsen: a.fietsen || [], wachtwoord: await hashGeheim(code), wachtwoordStandaard: true,
           aangemaakt: new Date().toISOString(), viaAanvraag: true,
         };
         await store.setJSON(`leden/${nieuw.id}`, nieuw);
         await store.delete(`aanvragen/${a.id}`);
-        return json({ lid: { ...publiek(nieuw), email: nieuw.email }, code });
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, code });
       }
 
       if (deel[1] === "aanvragen" && deel[2] && m === "DELETE") {
@@ -433,11 +468,11 @@ export default async (req) => {
         doel.wachtwoord = await hashGeheim(code);
         doel.wachtwoordStandaard = true;
         await store.setJSON(`leden/${doel.id}`, doel);
-        return json({ lid: { ...publiek(doel), email: doel.email }, code });
+        return json({ lid: { ...publiek(doel), email: doel.email, mobiel: doel.mobiel || "" }, code });
       }
 
       if (pad === "admin/leden" && m === "GET") {
-        return json({ leden: (await alleLeden()).map((l) => ({ ...publiek(l), email: l.email, wachtwoordStandaard: !!l.wachtwoordStandaard, aangemaakt: l.aangemaakt })) });
+        return json({ leden: (await alleLeden()).map((l) => ({ ...publiek(l), email: l.email, mobiel: l.mobiel || "", wachtwoordStandaard: !!l.wachtwoordStandaard, aangemaakt: l.aangemaakt })) });
       }
 
       if (pad === "admin/leden" && m === "POST") {
@@ -446,16 +481,18 @@ export default async (req) => {
         if (!naam) return fout("Vul een naam in.");
         if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
         if (await vindOpEmail(b.email)) return fout("Dit e-mailadres is al in gebruik.");
+        const mobiel = mobielNummer(b.mobiel);
+        if (mobiel === null) return fout("Dit mobiele nummer klopt niet. Laat het leeg of vul bijvoorbeeld 06 12345678 in.");
         const code = typeof b.wachtwoord === "string" && b.wachtwoord.length >= 6 ? b.wachtwoord : nieuweCode();
         const leden = await alleLeden();
         const nieuw = {
-          id: nieuwId(10), naam, email: b.email.trim().toLowerCase(), rol: b.rol === "admin" ? "admin" : "lid",
+          id: nieuwId(10), naam, email: b.email.trim().toLowerCase(), mobiel, rol: b.rol === "admin" ? "admin" : "lid",
           rugnummer: Number(b.rugnummer) || Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
           fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
           wachtwoord: await hashGeheim(code), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
         };
         await store.setJSON(`leden/${nieuw.id}`, nieuw);
-        return json({ lid: { ...publiek(nieuw), email: nieuw.email }, code });
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, code });
       }
 
       if (deel[1] === "leden" && deel[2] && m === "PUT") {
@@ -468,6 +505,11 @@ export default async (req) => {
           const ander = await vindOpEmail(b.email);
           if (ander && ander.id !== doel.id) return fout("Dit e-mailadres is al in gebruik.");
           doel.email = b.email.trim().toLowerCase();
+        }
+        if (b.mobiel !== undefined) {
+          const mob = mobielNummer(b.mobiel);
+          if (mob === null) return fout("Dit mobiele nummer klopt niet. Vul bijvoorbeeld 06 12345678 in.");
+          doel.mobiel = mob;
         }
         if (b.rugnummer !== undefined) doel.rugnummer = Math.max(1, Math.min(999, Number(b.rugnummer) || doel.rugnummer));
         if (b.rol !== undefined) {

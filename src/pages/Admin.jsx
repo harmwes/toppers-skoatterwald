@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
 import Icoon from "../components/Icoon.jsx";
 import { Rugnummer } from "../components/Merk.jsx";
 import RitFormulier from "./RitFormulier.jsx";
 import Blad from "../components/Blad.jsx";
-import { welkomTekst, openMail } from "../lib/mail.js";
+import { welkomTekst, openMail, welkomWhatsApp, toonMobiel } from "../lib/mail.js";
 import { TypeChip } from "../components/RitKaartje.jsx";
 import { datumLang, eindMoment, tijdAgo } from "../lib/tijd.js";
 import { km } from "../lib/gpx.js";
@@ -69,24 +69,37 @@ function Cijferslot({ onOpen }) {
   );
 }
 
-// Na accepteren of een nieuwe code: de code groot in beeld, en de mail staat al open.
+// Na accepteren of een nieuwe code: de code groot in beeld, en de admin kiest hoe het bericht verstuurd wordt.
 function CodeKaart({ gegevens, onKlaar }) {
   const { lid } = useApp();
   const volledig = { ...gegevens, afzender: lid.naam !== "Admin" ? lid.naam : "" };
-  const tekst = welkomTekst(volledig);
+  const [verstuurd, setVerstuurd] = useState({});
   const [gekopieerd, setGekopieerd] = useState(false);
-  useEffect(() => { const t = setTimeout(() => openMail(volledig), 350); return () => clearTimeout(t); }, []);
+  const voornaam = gegevens.naam.split(" ")[0];
+  const zet = (k) => setVerstuurd((v) => ({ ...v, [k]: true }));
+  const kaart = useRef(null);
+  useEffect(() => { setTimeout(() => kaart.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }, []);
   return (
-    <div className="kaart pad codekaart">
+    <div className="kaart pad codekaart" ref={kaart} style={{ scrollMarginTop: 16 }}>
       <div className="label">{gegevens.nieuweCode ? "Nieuwe code voor" : "Toegelaten:"} {gegevens.naam}</div>
       <div className="code-cijfers tab" aria-label={`Code ${gegevens.code}`}>
         {gegevens.code.split("").map((c, i) => <span key={i}>{c}</span>)}
       </div>
-      <p className="klein" style={{ margin: "0 0 12px" }}>Je mailprogramma opent met een kant-en-klaar bericht aan <b>{gegevens.email}</b>. Druk daar alleen nog op verzenden. Ging er niets open? Gebruik dan een van de knoppen hieronder.</p>
-      <div className="knoppenrij">
-        <button className="knop primair klein" onClick={() => openMail(volledig)}><Icoon naam="mail" />Open mail</button>
-        <a className="knop klein" href={`https://wa.me/?text=${encodeURIComponent(tekst)}`} target="_blank" rel="noreferrer"><Icoon naam="chat" />WhatsApp</a>
-        <button className="knop klein" onClick={async () => { try { await navigator.clipboard.writeText(tekst); setGekopieerd(true); } catch {} }}><Icoon naam={gekopieerd ? "vink" : "kopie"} />{gekopieerd ? "Gekopieerd" : "Kopieer"}</button>
+      <p className="klein" style={{ margin: "0 0 12px" }}>Stuur {voornaam} het welkomstbericht met de code en de link naar de handleiding. Kies hoe. Het bericht staat klaar, je drukt alleen nog op verzenden.</p>
+      <div className="verstuurkeuze">
+        <a className={`verstuurknop-groot wa ${verstuurd.wa ? "gedaan" : ""}`} href={welkomWhatsApp(volledig)} target="_blank" rel="noreferrer" onClick={() => zet("wa")}>
+          <Icoon naam={verstuurd.wa ? "vink" : "chat"} />
+          <b>WhatsApp</b>
+          <span className="klein">{gegevens.mobiel ? toonMobiel(gegevens.mobiel) : "je kiest zelf het gesprek"}</span>
+        </a>
+        <button type="button" className={`verstuurknop-groot mail ${verstuurd.mail ? "gedaan" : ""}`} onClick={() => { zet("mail"); openMail(volledig); }}>
+          <Icoon naam={verstuurd.mail ? "vink" : "mail"} />
+          <b>Mail</b>
+          <span className="klein">{gegevens.email}</span>
+        </button>
+      </div>
+      <div className="knoppenrij" style={{ marginTop: 10 }}>
+        <button className="knop klein" onClick={async () => { try { await navigator.clipboard.writeText(welkomTekst(volledig)); setGekopieerd(true); } catch {} }}><Icoon naam={gekopieerd ? "vink" : "kopie"} />{gekopieerd ? "Gekopieerd" : "Kopieer bericht"}</button>
         <button className="knop klein stil" onClick={onKlaar}>Klaar</button>
       </div>
     </div>
@@ -108,7 +121,7 @@ function Aanvragen({ onAantal }) {
     setBezig(true); setFout("");
     try {
       const r = await api(`admin/aanvragen/${gekozen.id}/accepteer`, { methode: "POST" });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code });
       setGekozen(null); laad();
     } catch (e) { setFout(e.message); laad(); }
     setBezig(false);
@@ -150,11 +163,12 @@ function Aanvragen({ onAantal }) {
           <div>
             <dl className="gegevens">
               <div><dt>E-mailadres</dt><dd>{gekozen.email}</dd></div>
+              {gekozen.mobiel && <div><dt>Mobiel</dt><dd className="tab">{toonMobiel(gekozen.mobiel)}</dd></div>}
               <div><dt>Aangevraagd</dt><dd>{new Date(gekozen.tijd).toLocaleString("nl-NL", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</dd></div>
               {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
               {gekozen.bericht && <div><dt>Bericht</dt><dd className="bericht">“{gekozen.bericht}”</dd></div>}
             </dl>
-            <p className="klein">Bij <b>Accepteren</b> maakt de app een persoonlijke code van 8 cijfers en opent je mailprogramma met een welkomstbericht, de code en de link naar de handleiding.</p>
+            <p className="klein">Bij <b>Accepteren</b> maakt de app een persoonlijke code van 8 cijfers. Daarna kies je of je het welkomstbericht via WhatsApp of mail stuurt.</p>
             <div className="keuze2">
               <button className="knop primair" onClick={accepteer} disabled={bezig}><Icoon naam="vink" />Accepteren</button>
               <button className={`knop ${afwijzen ? "gevaar" : ""}`} onClick={wijsAf} disabled={bezig}><Icoon naam="kruis" />{afwijzen ? "Zeker afwijzen?" : "Afwijzen"}</button>
@@ -187,8 +201,8 @@ function Leden() {
     e.preventDefault();
     setMelding(null); setBezig(true);
     try {
-      const r = await api("admin/leden", { methode: "POST", body: { naam: nieuw.naam, email: nieuw.email, rol: nieuw.rol } });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code });
+      const r = await api("admin/leden", { methode: "POST", body: { naam: nieuw.naam, email: nieuw.email, mobiel: nieuw.mobiel, rol: nieuw.rol } });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code });
       setNieuw(null); laad();
     } catch (err) { setMelding({ fout: err.message }); }
     setBezig(false);
@@ -199,7 +213,7 @@ function Leden() {
     setBezig(true);
     try {
       const r = await api(`admin/leden/${gekozen.id}/nieuwecode`, { methode: "POST" });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, code: r.code, nieuweCode: true });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code, nieuweCode: true });
       setGekozen(null); setBevestig(null); laad();
     } catch (err) { setMelding({ fout: err.message }); setGekozen(null); }
     setBezig(false);
@@ -217,7 +231,7 @@ function Leden() {
     e.preventDefault();
     setBezig(true);
     try {
-      await api(`admin/leden/${bewerk.id}`, { methode: "PUT", body: { naam: bewerk.naam, email: bewerk.email, rugnummer: bewerk.rugnummer, rol: bewerk.rol } });
+      await api(`admin/leden/${bewerk.id}`, { methode: "PUT", body: { naam: bewerk.naam, email: bewerk.email, mobiel: bewerk.mobiel || "", rugnummer: bewerk.rugnummer, rol: bewerk.rol } });
       setMelding({ ok: `${bewerk.naam} is bijgewerkt.` });
       setBewerk(null); setGekozen(null); laad();
     } catch (err) { setMelding({ fout: err.message }); }
@@ -239,16 +253,17 @@ function Leden() {
       {resultaat && <CodeKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
 
       {!nieuw ? (
-        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", rol: "lid" }); setResultaat(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
+        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", mobiel: "", rol: "lid" }); setResultaat(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
       ) : (
         <form className="kaart pad" onSubmit={voegToe}>
           <h3 style={{ marginBottom: 6 }}>Nieuwe fietser</h3>
-          <p className="klein" style={{ marginTop: 0 }}>De app maakt een code van 8 cijfers en opent je mail met een welkomstbericht.</p>
+          <p className="klein" style={{ marginTop: 0 }}>De app maakt een code van 8 cijfers. Daarna stuur je het welkomstbericht via WhatsApp of mail.</p>
           <label className="veld"><span>Naam</span><input className="invoer" required value={nieuw.naam} onChange={(e) => setNieuw({ ...nieuw, naam: e.target.value })} autoFocus /></label>
           <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" required value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></label>
+          <label className="veld"><span>Mobiel nummer (optioneel, voor WhatsApp)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="off" value={nieuw.mobiel} onChange={(e) => setNieuw({ ...nieuw, mobiel: e.target.value })} placeholder="06 12345678" /></label>
           <label className="schakelaar"><input type="checkbox" checked={nieuw.rol === "admin"} onChange={(e) => setNieuw({ ...nieuw, rol: e.target.checked ? "admin" : "lid" })} /><span />Ook organisatie (admin)</label>
           <div className="knoppenrij" style={{ marginTop: 14 }}>
-            <button className="knop primair" disabled={bezig}>Toevoegen en mailen</button>
+            <button className="knop primair" disabled={bezig}>Toevoegen</button>
             <button type="button" className="knop stil" onClick={() => setNieuw(null)}>Annuleren</button>
           </div>
         </form>
@@ -279,6 +294,7 @@ function Leden() {
             <div>
               <dl className="gegevens">
                 <div><dt>E-mailadres</dt><dd>{gekozen.demo ? "voorbeeldrenner" : gekozen.email}</dd></div>
+                {gekozen.mobiel && <div><dt>Mobiel</dt><dd className="tab">{toonMobiel(gekozen.mobiel)}</dd></div>}
                 <div><dt>Rol</dt><dd>{gekozen.rol === "admin" ? "Organisatie (admin)" : "Fietser"}</dd></div>
                 {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
                 <div><dt>Doet mee sinds</dt><dd>{gekozen.aangemaakt ? new Date(gekozen.aangemaakt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "onbekend"}</dd></div>
@@ -287,7 +303,7 @@ function Leden() {
               </dl>
               {!gekozen.demo && (
                 <>
-                  <button className={`knop vol ${bevestig === "code" ? "primair" : ""}`} onClick={nieuweCode} disabled={bezig}><Icoon naam="mail" />{bevestig === "code" ? "Ja, maak en mail een nieuwe code" : "Nieuwe code sturen"}</button>
+                  <button className={`knop vol ${bevestig === "code" ? "primair" : ""}`} onClick={nieuweCode} disabled={bezig}><Icoon naam="mail" />{bevestig === "code" ? "Ja, maak een nieuwe code" : "Nieuwe code sturen"}</button>
                   {bevestig === "code" && <p className="klein" style={{ margin: "8px 0 0" }}>De huidige code of het eigen wachtwoord van {gekozen.naam.split(" ")[0]} werkt daarna niet meer.</p>}
                 </>
               )}
@@ -305,6 +321,7 @@ function Leden() {
               <label className="veld"><span>Rugnummer</span><input className="invoer" type="number" min={1} max={999} value={bewerk.rugnummer} onChange={(e) => setBewerk({ ...bewerk, rugnummer: e.target.value })} /></label>
             </div>
             {!bewerk.demo && <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></label>}
+            {!bewerk.demo && <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" value={toonMobiel(bewerk.mobiel) || bewerk.mobiel || ""} onChange={(e) => setBewerk({ ...bewerk, mobiel: e.target.value })} placeholder="06 12345678" /></label>}
             {bewerk.id !== lid.id && !bewerk.demo && <label className="schakelaar"><input type="checkbox" checked={bewerk.rol === "admin"} onChange={(e) => setBewerk({ ...bewerk, rol: e.target.checked ? "admin" : "lid" })} /><span />Organisatie (admin)</label>}
             <div className="keuze2" style={{ marginTop: 14 }}>
               <button className="knop primair" disabled={bezig}>Opslaan</button>
@@ -349,6 +366,52 @@ function RittenBeheer() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Alle foto's uit het peloton, zodat de organisatie een ongepaste foto snel kan weghalen.
+function FotoBeheer() {
+  const [fotos, setFotos] = useState(null);
+  const [gekozen, setGekozen] = useState(null);
+  const [zeker, setZeker] = useState(false);
+  const [fout, setFout] = useState("");
+  const [alle, setAlle] = useState(false);
+  const laad = () => api("admin/fotos").then((r) => setFotos(r.fotos)).catch((e) => setFout(e.message));
+  useEffect(() => { laad(); }, []);
+  async function weg() {
+    if (!zeker) { setZeker(true); return; }
+    try { await api(`chat/${gekozen.id}/foto`, { methode: "DELETE" }); setFotos((f) => f.filter((x) => x.id !== gekozen.id)); setGekozen(null); }
+    catch (e) { setFout(e.message); }
+    setZeker(false);
+  }
+  const lijst = fotos ? (alle ? fotos : fotos.slice(0, 12)) : [];
+  return (
+    <div className="kaart pad" style={{ marginTop: 16 }}>
+      <h3>Foto's in het peloton</h3>
+      <p className="klein">Staat er een foto in de chat die er niet hoort? Tik erop en verwijder hem. De tekst van het bericht blijft staan, met de melding dat de organisatie de foto heeft verwijderd.</p>
+      {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
+      {!fotos && <div className="skelet" style={{ height: 90 }} />}
+      {fotos && !fotos.length && <p className="klein" style={{ marginBottom: 0 }}><i>Er staan nog geen foto's in het peloton.</i></p>}
+      {lijst.length > 0 && (
+        <div className="fotoraster">
+          {lijst.map((f) => (
+            <button key={f.id} className="fotoraster-item" onClick={() => { setGekozen(f); setZeker(false); }} aria-label={`Foto van ${f.naam}`}>
+              <img src={`/api/foto/${f.fotoId}`} alt="" loading="lazy" />
+            </button>
+          ))}
+        </div>
+      )}
+      {fotos?.length > 12 && !alle && <button className="knop klein stil" style={{ marginTop: 10 }} onClick={() => setAlle(true)}>Toon alle {fotos.length} foto's</button>}
+      <Blad open={!!gekozen} onSluit={() => setGekozen(null)} titel={gekozen ? `Foto van ${gekozen.naam}` : ""} label={gekozen ? new Date(gekozen.tijd).toLocaleString("nl-NL", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : ""}>
+        {gekozen && (
+          <div>
+            <img className="fotoblad-img" src={`/api/foto/${gekozen.fotoId}`} alt={`Foto van ${gekozen.naam}`} />
+            {gekozen.tekst && <p className="klein">“{gekozen.tekst}”</p>}
+            <button className={`knop vol ${zeker ? "gevaar" : ""}`} onClick={weg}><Icoon naam="prullenbak" />{zeker ? "Zeker weten? Tik nog een keer" : "Foto verwijderen"}</button>
+          </div>
+        )}
+      </Blad>
     </div>
   );
 }
@@ -426,6 +489,8 @@ function Instellingen() {
         <button className="knop primair vol" disabled={melderBezig}>{melderBezig ? "Opslaan…" : "Opslaan en testmail sturen"}</button>
         {melderInfo && <div className={`melding ${melderInfo.ok ? "ok" : "let"}`} style={{ marginTop: 12, marginBottom: 0 }}><Icoon naam={melderInfo.ok ? "vink" : "info"} /><span>{melderInfo.tekst}</span></div>}
       </form>
+
+      <FotoBeheer />
 
       <div className="kaart pad" style={{ marginTop: 16 }}>
         <h3>Voorbeeldinhoud</h3>

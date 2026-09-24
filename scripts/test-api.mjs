@@ -28,7 +28,8 @@ check("goede code", (await admin("POST", "admin/ontgrendel", { code: "7000" })).
 check("aanvraag zonder naam", (await anon("POST", "aanvraag", { email: "a@b.nl" })).s === 400);
 check("aanvraag fout e-mail", (await anon("POST", "aanvraag", { naam: "X", email: "geen-mail" })).s === 400);
 check("aanvraag honingpot", (await anon("POST", "aanvraag", { naam: "Bot", email: "bot@spam.nl", website: "http://spam" })).s === 200);
-check("aanvraag Harm", (await anon("POST", "aanvraag", { naam: "Harm de Jong", email: " Harm@Voorbeeld.nl ", fietsen: ["race", "hack"], bericht: "Hoi" })).s === 200);
+check("aanvraag fout mobiel", (await anon("POST", "aanvraag", { naam: "X", email: "x@y.nl", mobiel: "12ab" })).s === 400);
+check("aanvraag Harm", (await anon("POST", "aanvraag", { naam: "Harm de Jong", email: " Harm@Voorbeeld.nl ", mobiel: "06-12 34 56 78", fietsen: ["race", "hack"], bericht: "Hoi" })).s === 200);
 check("dubbele aanvraag", (await anon("POST", "aanvraag", { naam: "Harm de Jong", email: "harm@voorbeeld.nl" })).s === 200);
 check("aanvraag van bestaand lid maakt niets", (await anon("POST", "aanvraag", { naam: "Admin", email: "admin@toppers.nl" })).s === 200);
 let a = (await admin("GET", "admin/aanvragen")).j.aanvragen;
@@ -37,6 +38,7 @@ check("fietsen gefilterd", JSON.stringify(a[0].fietsen) === '["race"]');
 check("ik toont aantal aanvragen", (await admin("GET", "ik")).j.aanvragen === 1);
 const acc = await admin("POST", `admin/aanvragen/${a[0].id}/accepteer`);
 check("accepteren geeft code van 8 cijfers", /^\d{8}$/.test(acc.j.code || ""), acc.t);
+check("mobiel meegenomen en genormaliseerd", acc.j.lid.mobiel === "+31612345678", acc.t);
 check("aanvraag weg na accepteren", (await admin("GET", "admin/aanvragen")).j.aanvragen.length === 0);
 check("Harm logt in met code", (await harm("POST", "login", { email: "HARM@voorbeeld.nl", wachtwoord: acc.j.code })).s === 200);
 check("Harm heeft rugnummer 2", (await harm("GET", "ik")).j.lid.rugnummer === 2);
@@ -44,6 +46,12 @@ check("Harm heeft rugnummer 2", (await harm("GET", "ik")).j.lid.rugnummer === 2)
 // Rechten van een gewoon lid
 for (const [m, p] of [["GET", "admin/leden"], ["GET", "admin/aanvragen"], ["POST", "admin/ontgrendel"], ["POST", "admin/ritten"], ["DELETE", "admin/leden/admin"]]) check(`lid ${m} ${p} = 403`, (await harm(m, p, {})).s === 403);
 check("lid ziet geen e-mailadressen", !JSON.stringify((await harm("GET", "leden")).j).includes("@"));
+check("lid ziet geen mobiele nummers", !JSON.stringify((await harm("GET", "leden")).j).includes("612345678"));
+check("eigen mobiel zichtbaar", (await harm("GET", "ik")).j.lid.mobiel === "+31612345678");
+check("eigen mobiel wijzigen", (await harm("PUT", "ik", { mobiel: "+49 151 1234 5678" })).j.lid.mobiel === "+4915112345678");
+check("ongeldig mobiel geweigerd", (await harm("PUT", "ik", { mobiel: "123" })).s === 400);
+check("mobiel leegmaken", (await harm("PUT", "ik", { mobiel: "" })).j.lid.mobiel === "");
+check("admin zet mobiel", (await admin("PUT", `admin/leden/${acc.j.lid.id}`, { mobiel: "0612345678" })).s === 200 && (await admin("GET", "admin/leden")).j.leden.find((l) => l.id === acc.j.lid.id).mobiel === "+31612345678");
 
 // Nieuwe code
 const nc = await admin("POST", `admin/leden/${acc.j.lid.id}/nieuwecode`);
@@ -88,8 +96,22 @@ check("bericht met foto", m1.s === 200 && m1.j.bericht.fotoId);
 check("foto ophalen", (await admin("GET", `foto/${m1.j.bericht.fotoId}`)).h.get("content-type") === "image/jpeg");
 const m2 = await admin("POST", "chat", { tekst: "Van de admin" });
 check("lid mag andermans bericht niet wissen", (await harm2("DELETE", `chat/${m2.j.bericht.id}`)).s === 403);
+// Foto's verwijderen
+const m3 = await harm2("POST", "chat", { tekst: "Kijk!", foto });
+const m4 = await harm2("POST", "chat", { foto });
+const lijstF = (await admin("GET", "admin/fotos")).j.fotos;
+check("admin ziet fotolijst", lijstF.length >= 3 && lijstF[0].id === m4.j.bericht.id, JSON.stringify(lijstF.map((f) => f.id)));
+check("lid ziet fotolijst niet", (await harm2("GET", "admin/fotos")).s === 403);
+const m5 = await admin("POST", "chat", { tekst: "Van de organisatie", foto });
+check("lid mag andermans foto niet wissen", (await harm2("DELETE", `chat/${m5.j.bericht.id}/foto`)).s === 403);
+check("lid mag eigen foto wissen", (await harm2("DELETE", `chat/${m1.j.bericht.id}/foto`)).j.bericht?.fotoWeg === "zelf");
+const wegF = await admin("DELETE", `chat/${m3.j.bericht.id}/foto`);
+check("admin wist alleen de foto", wegF.s === 200 && wegF.j.bericht.fotoId === null && wegF.j.bericht.tekst === "Kijk!" && wegF.j.bericht.fotoWeg === "organisatie", wegF.t);
+check("foto echt weg", (await admin("GET", `foto/${m3.j.bericht.fotoId}`)).s === 404);
+const wegF2 = await admin("DELETE", `chat/${m4.j.bericht.id}/foto`);
+check("bericht met alleen foto verdwijnt helemaal", wegF2.j.weg === true && !(await harm2("GET", "chat")).j.berichten.some((b) => b.id === m4.j.bericht.id));
 check("admin mag elk bericht wissen", (await admin("DELETE", `chat/${m1.j.bericht.id}`)).s === 200);
-check("chat na", (await harm2("GET", `chat?na=${m1.j.bericht.id}`)).j.berichten.length === 1);
+check("chat na", (await harm2("GET", `chat?na=${m1.j.bericht.id}`)).j.berichten.length === 3);
 
 // Admin-beveiliging
 check("admin kan zichzelf niet wissen", (await admin("DELETE", "admin/leden/admin")).s === 400);

@@ -1,3 +1,4 @@
+import { toonMobiel } from "../lib/mail.js";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../App.jsx";
 import { api } from "../lib/api.js";
@@ -23,6 +24,7 @@ export default function Profiel() {
   const [ritten, setRitten] = useState([]);
   const [naam, setNaam] = useState(lid.naam);
   const [email, setEmail] = useState(lid.email);
+  const [mobiel, setMobiel] = useState(toonMobiel(lid.mobiel));
   const [pwVoorEmail, setPwVoorEmail] = useState("");
   const [pw, setPw] = useState({ huidig: "", nieuw: "", herhaal: "" });
   const [melding, setMelding] = useState({});
@@ -50,10 +52,11 @@ export default function Profiel() {
     e.preventDefault();
     setBezig("gegevens"); setMelding({});
     try {
-      const body = { naam };
+      const body = { naam, mobiel };
       if (email.trim().toLowerCase() !== lid.email) { body.email = email; body.huidigWachtwoord = pwVoorEmail; }
       const r = await api("ik", { methode: "PUT", body });
       zet({ ...lid, ...r.lid });
+      setMobiel(toonMobiel(r.lid.mobiel));
       setPwVoorEmail("");
       setMelding({ gegevens: { ok: "Je gegevens zijn opgeslagen." } });
     } catch (err) { setMelding({ gegevens: { fout: err.message } }); }
@@ -130,6 +133,7 @@ export default function Profiel() {
             <M m={melding.gegevens} />
             <label className="veld"><span>Naam</span><input className="invoer" value={naam} onChange={(e) => setNaam(e.target.value)} required maxLength={60} /></label>
             <label className="veld"><span>E-mailadres (hiermee log je in)</span><input className="invoer" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+            <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={mobiel} onChange={(e) => setMobiel(e.target.value)} placeholder="06 12345678" /><small className="klein veldhulp">Alleen zichtbaar voor de organisatie, bijvoorbeeld om je een nieuwe code via WhatsApp te sturen.</small></label>
             {email.trim().toLowerCase() !== lid.email && (
               <label className="veld"><span>Huidig wachtwoord ter bevestiging</span><input className="invoer" type="password" autoComplete="current-password" value={pwVoorEmail} onChange={(e) => setPwVoorEmail(e.target.value)} required /></label>
             )}

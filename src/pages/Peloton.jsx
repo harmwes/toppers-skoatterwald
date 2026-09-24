@@ -23,6 +23,8 @@ export default function Peloton({ onGelezen }) {
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
   const [groot, setGroot] = useState(null);
+  const [zeker, setZeker] = useState(false);
+  useEffect(() => setZeker(false), [groot]);
   const [menu, setMenu] = useState(null);
   const [ritId, setRitId] = useState(() => new URLSearchParams(window.location.search).get("rit"));
   const lijst = useRef(null);
@@ -95,6 +97,14 @@ export default function Peloton({ onGelezen }) {
     setBezig(false);
   }
 
+  async function verwijderFoto(b) {
+    setMenu(null); setGroot(null);
+    try {
+      const r = await api(`chat/${b.id}/foto`, { methode: "DELETE" });
+      setBerichten((oud) => (r.weg ? oud.filter((x) => x.id !== b.id) : oud.map((x) => (x.id === b.id ? r.bericht : x))));
+    } catch (err) { setFout(err.message); }
+  }
+
   async function verwijder(b) {
     setMenu(null);
     try {
@@ -143,16 +153,18 @@ export default function Peloton({ onGelezen }) {
                   <div className="bubbel" onClick={() => (eigen || lid.rol === "admin") && setMenu(menu === b.id ? null : b.id)}>
                     {rit && <button className="ritlabel" onClick={(e) => { e.stopPropagation(); ga(`/rit/${rit.id}`); }}><Icoon naam="vlag" className="i14" />{rit.titel}</button>}
                     {b.fotoId && (
-                      <button className="bubbelfoto" style={{ aspectRatio: b.fotoVorm || 4 / 3 }} onClick={(e) => { e.stopPropagation(); setGroot(b.fotoId); }} aria-label="Foto vergroten">
+                      <button className="bubbelfoto" style={{ aspectRatio: b.fotoVorm || 4 / 3 }} onClick={(e) => { e.stopPropagation(); setGroot(b); }} aria-label="Foto vergroten">
                         <img src={`/api/foto/${b.fotoId}`} alt={`Foto van ${b.naam}`} loading="lazy" />
                       </button>
                     )}
+                    {b.fotoWeg && <div className="foto-weg"><Icoon naam="prullenbak" className="i14" />{b.fotoWeg === "zelf" ? "Foto verwijderd" : "Foto verwijderd door de organisatie"}</div>}
                     {b.tekst && <div className="bubbeltekst">{b.tekst}</div>}
                     <span className="tijd tab">{hhmm(new Date(b.tijd))}</span>
                   </div>
                   {menu === b.id && (
                     <div className="bubbelmenu">
-                      <button className="knop klein gevaar" onClick={() => verwijder(b)}><Icoon naam="prullenbak" />Verwijder</button>
+                      {b.fotoId && b.tekst && <button className="knop klein gevaar" onClick={() => verwijderFoto(b)}><Icoon naam="prullenbak" />Alleen foto</button>}
+                      <button className="knop klein gevaar" onClick={() => verwijder(b)}><Icoon naam="prullenbak" />{b.fotoId && b.tekst ? "Hele bericht" : "Verwijder"}</button>
                     </div>
                   )}
                 </div>
@@ -188,8 +200,11 @@ export default function Peloton({ onGelezen }) {
 
       {groot && (
         <div className="lichtbak" onClick={() => setGroot(null)} role="dialog" aria-label="Foto">
-          <img src={`/api/foto/${groot}`} alt="" />
+          <img src={`/api/foto/${groot.fotoId}`} alt={`Foto van ${groot.naam}`} />
           <button className="icoonknop sluit" aria-label="Sluiten"><Icoon naam="kruis" /></button>
+          {(groot.lidId === lid.id || lid.rol === "admin") && (
+            <button className="knop klein gevaar lichtbak-weg" onClick={(e) => { e.stopPropagation(); zeker ? verwijderFoto(groot) : setZeker(true); }}><Icoon naam="prullenbak" />{zeker ? "Zeker weten? Tik nog een keer" : groot.lidId === lid.id ? "Foto verwijderen" : `Foto van ${groot.naam.split(" ")[0]} verwijderen`}</button>
+          )}
         </div>
       )}
     </div>

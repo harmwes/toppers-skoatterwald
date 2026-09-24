@@ -1,8 +1,9 @@
-// Kant-en-klare mail met inloggegevens. De admin hoeft alleen nog op verzenden te drukken.
+// Kant-en-klaar welkomstbericht met inloggegevens, via mail of WhatsApp. De admin hoeft alleen nog op verzenden te drukken.
 export const APP_URL = "https://toppers-skoatterwald.netlify.app";
 export const HANDLEIDING_URL = `${APP_URL}/handleiding.pdf`;
 
-export function welkomTekst({ naam, email, code, nieuweCode = false, afzender = "" }) {
+export function welkomTekst({ naam, email, code, nieuweCode = false, afzender = "" }, kanaal = "mail") {
+  const kop = kanaal === "whatsapp" ? "*Je inloggegevens*" : "JE INLOGGEGEVENS";
   const voornaam = (naam || "").split(" ")[0] || "fietser";
   const intro = nieuweCode
     ? `Je hebt een nieuwe inlogcode voor de app van Toppers Skoatterwâld. Je oude code werkt niet meer.`
@@ -13,7 +14,7 @@ ${intro}
 
 In de app zie je alle geplande ritten, voor race, gravel en ATB. Per rit zie je de route op de kaart, het hoogteprofiel en het weer met de wind op de route. Je geeft aan of je meerijdt en hoe laat je thuis moet zijn, je downloadt de GPX voor je fietscomputer en je praat en deelt foto's in het peloton.
 
-JE INLOGGEGEVENS
+${kop}
 App:     ${APP_URL}
 E-mail:  ${email}
 Code:    ${code}
@@ -35,4 +36,17 @@ export function welkomMailto(gegevens) {
 
 export function openMail(gegevens) {
   window.location.href = welkomMailto(gegevens);
+}
+
+// +31612345678 → 06 12 34 56 78 (Nederlandse nummers), anders zoals opgeslagen.
+export function toonMobiel(m) {
+  if (!m) return "";
+  const nl = /^\+316(\d{8})$/.exec(m);
+  return nl ? `06 ${nl[1].replace(/(\d{2})(?=\d)/g, "$1 ")}` : m;
+}
+
+// WhatsApp met het bericht klaar. Met nummer direct naar dat gesprek, anders kies je zelf het gesprek.
+export function welkomWhatsApp(gegevens) {
+  const nummer = (gegevens.mobiel || "").replace(/\D/g, "");
+  return `https://wa.me/${nummer}?text=${encodeURIComponent(welkomTekst(gegevens, "whatsapp"))}`;
 }

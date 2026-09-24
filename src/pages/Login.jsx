@@ -7,7 +7,7 @@ import { VolledigSchermKnop, HandleidingKnop, InstallerenKnop } from "../compone
 import { TYPES } from "../lib/tijd.js";
 
 function MeedoenBlad({ open, onSluit }) {
-  const [v, setV] = useState({ naam: "", email: "", bericht: "", fietsen: [] });
+  const [v, setV] = useState({ naam: "", email: "", mobiel: "", bericht: "", fietsen: [] });
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState("");
   const [klaar, setKlaar] = useState(false);
@@ -30,16 +30,17 @@ function MeedoenBlad({ open, onSluit }) {
         <div className="meedoen-klaar">
           <div className="meedoen-vlag"><Icoon naam="vink" /></div>
           <p><b>Bedankt, {v.naam.split(" ")[0]}!</b> Je aanvraag is binnen bij de organisatie.</p>
-          <p>Zodra je bent toegelaten, krijg je een mail op <b>{v.email.trim().toLowerCase()}</b> met je persoonlijke inlogcode en een link naar de handleiding. Kijk voor de zekerheid ook even in je spam.</p>
+          <p>Zodra je bent toegelaten, krijg je {v.mobiel.trim() ? <>een bericht via WhatsApp of een mail op <b>{v.email.trim().toLowerCase()}</b></> : <>een mail op <b>{v.email.trim().toLowerCase()}</b></>} met je persoonlijke inlogcode en een link naar de handleiding. Kijk voor de zekerheid ook even in je spam.</p>
           <p className="klein">Tot die tijd: banden oppompen en ketting smeren.</p>
           <button className="knop vol" onClick={onSluit}>Sluiten</button>
         </div>
       ) : (
         <form onSubmit={verstuur}>
-          <p className="meedoen-intro">Fiets je graag mee op de racefiets, gravelbike of mountainbike? Laat je gegevens achter. De organisatie bekijkt je aanvraag en stuurt je een mail met je inlogcode.</p>
+          <p className="meedoen-intro">Fiets je graag mee op de racefiets, gravelbike of mountainbike? Laat je gegevens achter. De organisatie bekijkt je aanvraag en stuurt je je inlogcode.</p>
           {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
           <label className="veld"><span>Je naam</span><input className="invoer" required maxLength={60} autoComplete="name" value={v.naam} onChange={(e) => setV({ ...v, naam: e.target.value })} placeholder="Voor- en achternaam" /></label>
           <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" required autoComplete="email" inputMode="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} placeholder="jij@voorbeeld.nl" /></label>
+          <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={v.mobiel} onChange={(e) => setV({ ...v, mobiel: e.target.value })} placeholder="06 12345678" /><small className="klein veldhulp">Vul je dit in, dan kan de organisatie je inlogcode ook via WhatsApp sturen.</small></label>
           <div className="veld">
             <span>Waar fiets je op? (optioneel)</span>
             <div className="meedoen-fietsen">
@@ -53,7 +54,7 @@ function MeedoenBlad({ open, onSluit }) {
           <label className="veld"><span>Bericht aan de organisatie (optioneel)</span><textarea className="invoer" maxLength={400} value={v.bericht} onChange={(e) => setV({ ...v, bericht: e.target.value })} placeholder="Bijvoorbeeld: ik woon in Heerenveen en rij zo'n 30 km/u gemiddeld" /></label>
           <input className="sr" tabIndex={-1} autoComplete="off" aria-hidden="true" value={honing} onChange={(e) => setHoning(e.target.value)} name="website" />
           <button className="knop primair vol" disabled={bezig}>{bezig ? "Versturen…" : <><Icoon naam="handzwaai" />Aanvraag versturen</>}</button>
-          <p className="klein" style={{ marginTop: 12 }}>We gebruiken je naam en e-mailadres alleen voor deze app.</p>
+          <p className="klein" style={{ marginTop: 12 }}>We gebruiken je gegevens alleen voor deze app en slaan ze versleuteld op. Je mobiele nummer ziet alleen de organisatie.</p>
         </form>
       )}
     </Blad>
@@ -96,7 +97,7 @@ export default function Login({ onIngelogd, fout: startFout }) {
         <div className="login-top">
           <span className="label">Fietsgroep · race · gravel · ATB</span>
           <Logo groot />
-          <p className="login-slogan">Race, gravel en ATB.<br />Samen uit, samen thuis.</p>
+          <p className="login-slogan">Race, gravel en ATB.{" "}<br />Samen uit, samen thuis.</p>
         </div>
         <form className="login-form" onSubmit={verstuur}>
           {fout && <div className="melding fout" role="alert"><Icoon naam="let" /><span>{fout}</span></div>}
