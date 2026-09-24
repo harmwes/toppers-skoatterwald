@@ -318,7 +318,7 @@
 .segment { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--asfalt-2); border: 1px solid var(--lijn); padding: 4px; border-radius: 15px; margin-bottom: 16px; }
 .segment button { border: 0; background: none; height: 42px; border-radius: 11px; font-family: var(--kop); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 15px; color: var(--grijs); }
 .segment button.aan { background: var(--krijt); color: var(--asfalt); }
-.ledenlijst { margin-top: 14px; display: grid; gap: 8px; }
+.ledenlijst { margin-top: 14px; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
 .lidrij { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--asfalt-2); border: 1px solid var(--lijn); border-radius: 16px; }
 .lidrij.oud { opacity: .6; }
 .lid-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
