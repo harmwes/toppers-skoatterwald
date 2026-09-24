@@ -83,7 +83,7 @@ function Aanmelden({ rit, mijn, onGewijzigd }) {
             ))}
             <label className={`filter tijdkiezer ${thuis && !THUIS_SNEL(rit).includes(thuis) ? "aan" : ""}`}>
               <Icoon naam="klok" className="i16" />
-              <input type="time" value={thuis} onChange={(e) => setThuis(e.target.value)} onBlur={(e) => e.target.value !== (mijn?.thuis || "") && bewaar({ thuis: e.target.value })} aria-label="Andere tijd" />
+              <input type="time" value={thuis && !THUIS_SNEL(rit).includes(thuis) ? thuis : ""} onChange={(e) => setThuis(e.target.value)} onBlur={(e) => e.target.value !== (mijn?.thuis || "") && bewaar({ thuis: e.target.value })} aria-label="Andere tijd" />
             </label>
           </div>
           {analyse && (
