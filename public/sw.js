@@ -19,8 +19,8 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(fetch(e.request).catch(() => caches.match("/")));
     return;
   }
-  // Eigen bestanden en lettertypen: cache met verversen op de achtergrond.
-  if (url.origin === location.origin || url.hostname.endsWith("fonts.gstatic.com") || url.hostname.endsWith("fonts.googleapis.com")) {
+  // Eigen bestanden (ook de lettertypen): cache met verversen op de achtergrond.
+  if (url.origin === location.origin) {
     e.respondWith(
       caches.open(VERSIE).then(async (c) => {
         const oud = await c.match(e.request);
