@@ -1,0 +1,22 @@
+{
+  "name": "toppers-skoatterwald",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Toppers Skoatterwald: de app van de fietsgroep. Ritten, GPX, weer en wind, startlijst en groepschat.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "local": "vite build && node scripts/local-server.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.1",
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^5.4.21"
+  }
+}

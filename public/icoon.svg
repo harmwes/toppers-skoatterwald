@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="c"><rect width="512" height="512" rx="112"/></clipPath>
+    <pattern id="s" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(-35)">
+      <rect width="22" height="44" fill="#2b5fb4"/><rect x="22" width="22" height="44" fill="#f3f0e7"/>
+    </pattern>
+    <radialGradient id="g" cx="0.8" cy="0.1" r="0.9">
+      <stop offset="0" stop-color="#3a1618"/><stop offset="0.6" stop-color="#0c0d0f"/>
+    </radialGradient>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="512" height="512" fill="url(#g)"/>
+    <rect x="-20" y="410" width="560" height="54" fill="url(#s)"/>
+    <!-- cursieve T -->
+    <path d="M150 96 H408 L394 160 H310 L262 382 H184 L232 160 H136 Z" fill="#f3f0e7"/>
+    <!-- routelijn -->
+    <path d="M60 350 C 120 330, 150 380, 210 356 S 300 300, 360 318 S 440 360, 470 330" fill="none" stroke="#e5322d" stroke-width="14" stroke-linecap="round"/>
+    <!-- pompeblêd -->
+    <path transform="translate(404 34) scale(2.9) rotate(-14 12 13)" fill="#e5322d" d="M12 21.5c-.6-1.6-2.6-3.3-4.9-5.1C4.6 14.5 2.5 12.6 2.5 9.4 2.5 6.6 4.6 4.5 7.2 4.5c2 0 3.6 1.1 4.8 2.9 1.2-1.8 2.8-2.9 4.8-2.9 2.6 0 4.7 2.1 4.7 4.9 0 3.2-2.1 5.1-4.6 7-2.3 1.8-4.3 3.5-4.9 5.1z"/>
+  </g>
+</svg>

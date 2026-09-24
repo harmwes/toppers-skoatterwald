@@ -1,0 +1,473 @@
+// Toppers Skoatterwald: alle API-routes onder /api/.
+import { db } from "../lib/store.mjs";
+import {
+  config as leesConfig, bewaarConfig, hashGeheim, klopt, nieuwId, huidigLid, maakSessie, wisCookie,
+  maakAdminSessie, adminOntgrendeld, remPoging, SESSIE_COOKIE, ADMIN_COOKIE,
+} from "../lib/auth.mjs";
+
+const TYPES = ["race", "gravel", "atb"];
+const STATUS = ["ja", "nee", "misschien"];
+const MAX_GPX = 5 * 1024 * 1024;
+const MAX_FOTO = 4 * 1024 * 1024;
+
+function json(data, status = 200, headers = {}) {
+  const h = new Headers({ "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  for (const [k, v] of Object.entries(headers)) {
+    if (Array.isArray(v)) v.forEach((x) => h.append(k, x)); else h.set(k, v);
+  }
+  return new Response(JSON.stringify(data), { status, headers: h });
+}
+const fout = (melding, status = 400) => json({ fout: melding }, status);
+
+const emailOk = (e) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+const tijdOk = (t) => typeof t === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+const datumOk = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
+const tekst = (s, max = 500) => (typeof s === "string" ? s.trim().slice(0, max) : "");
+
+function publiek(lid) {
+  return { id: lid.id, naam: lid.naam, rugnummer: lid.rugnummer, rol: lid.rol, fietsen: lid.fietsen || [], demo: !!lid.demo };
+}
+function eigen(lid) {
+  return { ...publiek(lid), email: lid.email, wachtwoordStandaard: !!lid.wachtwoordStandaard };
+}
+
+async function alleLeden() {
+  const store = db();
+  const { blobs } = await store.list({ prefix: "leden/" });
+  const leden = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  return leden.filter(Boolean).sort((a, b) => (a.rugnummer || 999) - (b.rugnummer || 999));
+}
+
+async function vindOpEmail(email) {
+  const e = email.trim().toLowerCase();
+  return (await alleLeden()).find((l) => l.email.toLowerCase() === e) || null;
+}
+
+async function aanmeldingen() {
+  const store = db();
+  const { blobs } = await store.list({ prefix: "aanmelding/" });
+  const rijen = await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })));
+  const perRit = {};
+  rijen.filter(Boolean).forEach((r) => { (perRit[r.ritId] ||= []).push(r); });
+  return perRit;
+}
+
+function verkleinPunten(punten, max) {
+  if (!Array.isArray(punten) || punten.length <= max) return punten || [];
+  const stap = (punten.length - 1) / (max - 1);
+  const uit = [];
+  for (let i = 0; i < max; i++) uit.push(punten[Math.round(i * stap)]);
+  return uit;
+}
+
+function ritVoorLijst(rit, aanm, leden) {
+  const ledenMap = Object.fromEntries(leden.map((l) => [l.id, l]));
+  const lijst = (aanm || []).filter((a) => ledenMap[a.lidId]).map((a) => ({
+    lidId: a.lidId, status: a.status, thuis: a.thuis || null, notitie: a.notitie || "",
+    naam: ledenMap[a.lidId].naam, rugnummer: ledenMap[a.lidId].rugnummer, bijgewerkt: a.bijgewerkt,
+  }));
+  return { ...rit, route: rit.route ? { ...rit.route, punten: verkleinPunten(rit.route.punten, 140) } : null, aanmeldingen: lijst };
+}
+
+function schoonRoute(route) {
+  if (!route || !Array.isArray(route.punten) || route.punten.length < 2) return null;
+  const punten = verkleinPunten(route.punten, 900).map((p) => [
+    Math.round(Number(p[0]) * 1e5) / 1e5, Math.round(Number(p[1]) * 1e5) / 1e5,
+    p[2] == null ? null : Math.round(Number(p[2]) * 10) / 10, Math.round(Number(p[3]) || 0),
+  ]).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  return {
+    afstand: Math.round(Number(route.afstand) || 0),
+    stijging: Math.round(Number(route.stijging) || 0),
+    daling: Math.round(Number(route.daling) || 0),
+    hoogsteHoogte: route.hoogsteHoogte == null ? null : Math.round(route.hoogsteHoogte),
+    laagsteHoogte: route.laagsteHoogte == null ? null : Math.round(route.laagsteHoogte),
+    rondrit: !!route.rondrit,
+    naam: tekst(route.naam, 120),
+    punten,
+  };
+}
+
+function ritVelden(b, bestaand = {}) {
+  const rit = { ...bestaand };
+  if (b.titel !== undefined) rit.titel = tekst(b.titel, 80);
+  if (b.type !== undefined) rit.type = b.type;
+  if (b.datum !== undefined) rit.datum = b.datum;
+  if (b.starttijd !== undefined) rit.starttijd = b.starttijd;
+  if (b.startplek !== undefined) rit.startplek = tekst(b.startplek, 120);
+  if (b.omschrijving !== undefined) rit.omschrijving = tekst(b.omschrijving, 1500);
+  if (b.tempo !== undefined) rit.tempo = Number(b.tempo) > 0 ? Math.min(45, Math.max(8, Math.round(Number(b.tempo)))) : null;
+  if (!rit.titel) return { fout: "Geef de rit een naam." };
+  if (!TYPES.includes(rit.type)) return { fout: "Kies race, gravel of ATB." };
+  if (!datumOk(rit.datum)) return { fout: "Kies een geldige datum." };
+  if (!tijdOk(rit.starttijd)) return { fout: "Kies een geldige starttijd." };
+  return { rit };
+}
+
+async function leesBody(req) {
+  try { return await req.json(); } catch { return {}; }
+}
+
+export default async (req) => {
+  const url = new URL(req.url);
+  const pad = url.pathname.replace(/^\/api\/?/, "").replace(/\/$/, "");
+  const deel = pad.split("/");
+  const m = req.method;
+  const store = db();
+
+  try {
+    await leesConfig();
+
+    // ---------- Inloggen ----------
+    if (pad === "login" && m === "POST") {
+      const b = await leesBody(req);
+      const email = tekst(b.email, 200).toLowerCase();
+      const rem = await remPoging("login:" + email);
+      if (rem.geblokkeerd) return fout("Te vaak geprobeerd. Wacht een kwartier en probeer het opnieuw.", 429);
+      const lid = email ? await vindOpEmail(email) : null;
+      if (!lid || lid.demo || !(await klopt(b.wachtwoord || "", lid.wachtwoord.salt, lid.wachtwoord.hash))) {
+        await rem.fout();
+        return fout("E-mailadres of wachtwoord klopt niet.", 401);
+      }
+      await rem.goed();
+      return json({ lid: eigen(lid) }, 200, { "set-cookie": [await maakSessie(lid), wisCookie(ADMIN_COOKIE)] });
+    }
+
+    if (pad === "logout" && m === "POST") {
+      return json({ ok: true }, 200, { "set-cookie": [wisCookie(SESSIE_COOKIE), wisCookie(ADMIN_COOKIE)] });
+    }
+
+    // Vanaf hier: ingelogd.
+    const lid = await huidigLid(req);
+    if (!lid) return fout("Niet ingelogd.", 401);
+
+    // ---------- Eigen profiel ----------
+    if (pad === "ik" && m === "GET") {
+      const cfg = await leesConfig();
+      return json({ lid: eigen(lid), adminOpen: await adminOntgrendeld(req, lid), codeStandaard: lid.rol === "admin" ? !!cfg.codeStandaard : undefined });
+    }
+
+    if (pad === "ik" && m === "PUT") {
+      const b = await leesBody(req);
+      const nieuw = { ...lid };
+      if (b.naam !== undefined) {
+        const naam = tekst(b.naam, 60);
+        if (!naam) return fout("Vul je naam in.");
+        nieuw.naam = naam;
+      }
+      if (Array.isArray(b.fietsen)) nieuw.fietsen = b.fietsen.filter((f) => TYPES.includes(f));
+      if (b.email !== undefined && b.email.trim().toLowerCase() !== lid.email.toLowerCase()) {
+        if (!emailOk(b.email)) return fout("Dit is geen geldig e-mailadres.");
+        if (!(await klopt(b.huidigWachtwoord || "", lid.wachtwoord.salt, lid.wachtwoord.hash))) return fout("Je huidige wachtwoord klopt niet.", 403);
+        const ander = await vindOpEmail(b.email);
+        if (ander && ander.id !== lid.id) return fout("Dit e-mailadres is al in gebruik.");
+        nieuw.email = b.email.trim().toLowerCase();
+      }
+      await store.setJSON(`leden/${lid.id}`, nieuw);
+      return json({ lid: eigen(nieuw) });
+    }
+
+    if (pad === "ik/wachtwoord" && m === "PUT") {
+      const b = await leesBody(req);
+      if (!(await klopt(b.huidig || "", lid.wachtwoord.salt, lid.wachtwoord.hash))) return fout("Je huidige wachtwoord klopt niet.", 403);
+      if (typeof b.nieuw !== "string" || b.nieuw.length < 6) return fout("Kies een wachtwoord van minstens 6 tekens.");
+      const nieuw = { ...lid, wachtwoord: await hashGeheim(b.nieuw), wachtwoordStandaard: false };
+      await store.setJSON(`leden/${lid.id}`, nieuw);
+      return json({ ok: true, lid: eigen(nieuw) }, 200, { "set-cookie": [await maakSessie(nieuw)] });
+    }
+
+    // ---------- Leden (publiek binnen de groep) ----------
+    if (pad === "leden" && m === "GET") {
+      return json({ leden: (await alleLeden()).map(publiek) });
+    }
+
+    // ---------- Ritten ----------
+    if (pad === "ritten" && m === "GET") {
+      const [{ blobs }, aanm, leden] = await Promise.all([store.list({ prefix: "ritten/" }), aanmeldingen(), alleLeden()]);
+      const ritten = (await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })))).filter(Boolean);
+      ritten.sort((a, b) => (a.datum + a.starttijd).localeCompare(b.datum + b.starttijd));
+      return json({ ritten: ritten.map((r) => ritVoorLijst(r, aanm[r.id], leden)) });
+    }
+
+    if (deel[0] === "ritten" && deel[1] && deel.length === 2 && m === "GET") {
+      const rit = await store.get(`ritten/${deel[1]}`, { type: "json" });
+      if (!rit) return fout("Deze rit bestaat niet (meer).", 404);
+      const [aanm, leden] = await Promise.all([aanmeldingen(), alleLeden()]);
+      const r = ritVoorLijst(rit, aanm[rit.id], leden);
+      r.route = rit.route; // volledige route voor de detailkaart
+      return json({ rit: r });
+    }
+
+    if (deel[0] === "ritten" && deel[2] === "gpx" && m === "GET") {
+      const rit = await store.get(`ritten/${deel[1]}`, { type: "json" });
+      const gpx = rit && (await store.get(`gpx/${deel[1]}`));
+      if (!gpx) return fout("Geen GPX gevonden.", 404);
+      const naam = (rit.gpxNaam || `${rit.titel}.gpx`).replace(/[^\w.\- ]+/g, "_");
+      return new Response(gpx, {
+        headers: {
+          "content-type": "application/gpx+xml; charset=utf-8",
+          "content-disposition": `attachment; filename="${naam.endsWith(".gpx") ? naam : naam + ".gpx"}"`,
+          "cache-control": "private, max-age=300",
+        },
+      });
+    }
+
+    if (deel[0] === "ritten" && deel[2] === "aanmelding" && m === "PUT") {
+      const rit = await store.get(`ritten/${deel[1]}`, { type: "json" });
+      if (!rit) return fout("Deze rit bestaat niet (meer).", 404);
+      const b = await leesBody(req);
+      if (b.status === null) {
+        await store.delete(`aanmelding/${rit.id}/${lid.id}`);
+        return json({ ok: true });
+      }
+      if (!STATUS.includes(b.status)) return fout("Kies ja, nee of misschien.");
+      if (b.thuis && !tijdOk(b.thuis)) return fout("Kies een geldige tijd.");
+      const rij = { ritId: rit.id, lidId: lid.id, status: b.status, thuis: b.status === "nee" ? null : b.thuis || null, notitie: tekst(b.notitie, 140), bijgewerkt: new Date().toISOString() };
+      await store.setJSON(`aanmelding/${rit.id}/${lid.id}`, rij);
+      return json({ ok: true, aanmelding: rij });
+    }
+
+    // ---------- Chat ----------
+    if (pad === "chat" && m === "GET") {
+      const na = url.searchParams.get("na") || "";
+      const { blobs } = await store.list({ prefix: "chat/" });
+      let sleutels = blobs.map((b) => b.key).sort();
+      if (na) sleutels = sleutels.filter((k) => k > `chat/${na}`);
+      sleutels = sleutels.slice(-80);
+      const berichten = (await Promise.all(sleutels.map((k) => store.get(k, { type: "json" })))).filter(Boolean);
+      return json({ berichten });
+    }
+
+    if (pad === "chat" && m === "POST") {
+      const b = await leesBody(req);
+      const t = tekst(b.tekst, 2000);
+      let fotoId = null, fotoVorm = null;
+      if (b.foto) {
+        const mt = /^data:(image\/(jpeg|png|webp));base64,(.+)$/.exec(b.foto);
+        if (!mt) return fout("Deze foto kan ik niet lezen.");
+        const buf = Buffer.from(mt[3], "base64");
+        if (buf.length > MAX_FOTO) return fout("De foto is te groot.");
+        fotoId = nieuwId(14);
+        fotoVorm = Number(b.fotoVorm) > 0 ? Math.round(Number(b.fotoVorm) * 1000) / 1000 : null;
+        await store.set(`foto/${fotoId}`, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length), { metadata: { type: mt[1] } });
+      }
+      if (!t && !fotoId) return fout("Leeg bericht.");
+      const nu = new Date();
+      const id = `${nu.getTime().toString().padStart(14, "0")}-${nieuwId(6)}`;
+      const bericht = { id, lidId: lid.id, naam: lid.naam, rugnummer: lid.rugnummer, tekst: t, fotoId, fotoVorm, ritId: tekst(b.ritId, 20) || null, tijd: nu.toISOString() };
+      await store.setJSON(`chat/${id}`, bericht);
+      return json({ bericht });
+    }
+
+    if (deel[0] === "chat" && deel[1] && m === "DELETE") {
+      const bericht = await store.get(`chat/${deel[1]}`, { type: "json" });
+      if (!bericht) return json({ ok: true });
+      if (bericht.lidId !== lid.id && lid.rol !== "admin") return fout("Je kunt alleen je eigen berichten verwijderen.", 403);
+      if (bericht.fotoId) await store.delete(`foto/${bericht.fotoId}`);
+      await store.delete(`chat/${deel[1]}`);
+      return json({ ok: true });
+    }
+
+    if (deel[0] === "foto" && deel[1] && m === "GET") {
+      const r = await store.getWithMetadata(`foto/${deel[1]}`, { type: "arrayBuffer" });
+      if (!r) return fout("Foto niet gevonden.", 404);
+      return new Response(r.data, { headers: { "content-type": r.metadata?.type || "image/jpeg", "cache-control": "private, max-age=31536000, immutable" } });
+    }
+
+    // ---------- Admin ----------
+    if (deel[0] === "admin") {
+      if (lid.rol !== "admin") return fout("Alleen voor de organisatie.", 403);
+
+      if (pad === "admin/ontgrendel" && m === "POST") {
+        const b = await leesBody(req);
+        const rem = await remPoging("code:" + lid.id);
+        if (rem.geblokkeerd) return fout("Te vaak een verkeerde code. Wacht een kwartier.", 429);
+        const cfg = await leesConfig();
+        if (!(await klopt(String(b.code || ""), cfg.adminCode.salt, cfg.adminCode.hash))) {
+          await rem.fout();
+          return fout("Verkeerde code.", 403);
+        }
+        await rem.goed();
+        return json({ ok: true, codeStandaard: !!cfg.codeStandaard }, 200, { "set-cookie": [await maakAdminSessie(lid)] });
+      }
+
+      if (pad === "admin/vergrendel" && m === "POST") {
+        return json({ ok: true }, 200, { "set-cookie": [wisCookie(ADMIN_COOKIE)] });
+      }
+
+      if (!(await adminOntgrendeld(req, lid))) return fout("Voer eerst de admincode in.", 423);
+
+      if (pad === "admin/code" && m === "PUT") {
+        const b = await leesBody(req);
+        const code = String(b.code || "");
+        if (!/^\d{4,8}$/.test(code)) return fout("De code moet uit 4 tot 8 cijfers bestaan.");
+        const cfg = await leesConfig();
+        cfg.adminCode = await hashGeheim(code);
+        cfg.codeVersie = (cfg.codeVersie || 1) + 1;
+        cfg.codeStandaard = code === "7000";
+        await bewaarConfig(cfg);
+        return json({ ok: true }, 200, { "set-cookie": [await maakAdminSessie(lid)] });
+      }
+
+      if (pad === "admin/leden" && m === "GET") {
+        return json({ leden: (await alleLeden()).map((l) => ({ ...publiek(l), email: l.email, wachtwoordStandaard: !!l.wachtwoordStandaard, aangemaakt: l.aangemaakt })) });
+      }
+
+      if (pad === "admin/leden" && m === "POST") {
+        const b = await leesBody(req);
+        const naam = tekst(b.naam, 60);
+        if (!naam) return fout("Vul een naam in.");
+        if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
+        if (await vindOpEmail(b.email)) return fout("Dit e-mailadres is al in gebruik.");
+        if (typeof b.wachtwoord !== "string" || b.wachtwoord.length < 6) return fout("Kies een startwachtwoord van minstens 6 tekens.");
+        const leden = await alleLeden();
+        const nieuw = {
+          id: nieuwId(10), naam, email: b.email.trim().toLowerCase(), rol: b.rol === "admin" ? "admin" : "lid",
+          rugnummer: Number(b.rugnummer) || Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
+          fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
+          wachtwoord: await hashGeheim(b.wachtwoord), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
+        };
+        await store.setJSON(`leden/${nieuw.id}`, nieuw);
+        return json({ lid: publiek(nieuw) });
+      }
+
+      if (deel[1] === "leden" && deel[2] && m === "PUT") {
+        const doel = await store.get(`leden/${deel[2]}`, { type: "json" });
+        if (!doel) return fout("Lid niet gevonden.", 404);
+        const b = await leesBody(req);
+        if (b.naam !== undefined) { const n = tekst(b.naam, 60); if (!n) return fout("Vul een naam in."); doel.naam = n; }
+        if (b.email !== undefined) {
+          if (!emailOk(b.email)) return fout("Vul een geldig e-mailadres in.");
+          const ander = await vindOpEmail(b.email);
+          if (ander && ander.id !== doel.id) return fout("Dit e-mailadres is al in gebruik.");
+          doel.email = b.email.trim().toLowerCase();
+        }
+        if (b.rugnummer !== undefined) doel.rugnummer = Math.max(1, Math.min(999, Number(b.rugnummer) || doel.rugnummer));
+        if (b.rol !== undefined) {
+          if (doel.id === lid.id && b.rol !== "admin") return fout("Je kunt jezelf geen admin-rechten afnemen.");
+          doel.rol = b.rol === "admin" ? "admin" : "lid";
+        }
+        if (b.wachtwoord) {
+          if (b.wachtwoord.length < 6) return fout("Kies een wachtwoord van minstens 6 tekens.");
+          doel.wachtwoord = await hashGeheim(b.wachtwoord);
+          doel.wachtwoordStandaard = true;
+          delete doel.demo;
+        }
+        await store.setJSON(`leden/${doel.id}`, doel);
+        return json({ lid: publiek(doel) });
+      }
+
+      if (deel[1] === "leden" && deel[2] && m === "DELETE") {
+        if (deel[2] === lid.id) return fout("Je kunt jezelf niet verwijderen.");
+        await store.delete(`leden/${deel[2]}`);
+        const { blobs } = await store.list({ prefix: "aanmelding/" });
+        await Promise.all(blobs.filter((b) => b.key.endsWith(`/${deel[2]}`)).map((b) => store.delete(b.key)));
+        return json({ ok: true });
+      }
+
+      if (pad === "admin/ritten" && m === "POST") {
+        const b = await leesBody(req);
+        const { rit, fout: f } = ritVelden(b);
+        if (f) return fout(f);
+        if (!b.gpx || typeof b.gpx.tekst !== "string") return fout("Voeg een GPX-bestand toe.");
+        if (b.gpx.tekst.length > MAX_GPX) return fout("Het GPX-bestand is groter dan 5 MB.");
+        if (!/<gpx[\s>]/i.test(b.gpx.tekst)) return fout("Dit lijkt geen GPX-bestand.");
+        const route = schoonRoute(b.route);
+        if (!route) return fout("In dit GPX-bestand staat geen bruikbare route.");
+        const id = nieuwId(8);
+        const nieuw = { ...rit, id, route, gpxNaam: tekst(b.gpx.naam, 120) || `${rit.titel}.gpx`, gemaaktDoor: lid.naam, aangemaakt: new Date().toISOString() };
+        await store.set(`gpx/${id}`, b.gpx.tekst);
+        await store.setJSON(`ritten/${id}`, nieuw);
+        return json({ rit: nieuw });
+      }
+
+      if (deel[1] === "ritten" && deel[2] && m === "PUT") {
+        const bestaand = await store.get(`ritten/${deel[2]}`, { type: "json" });
+        if (!bestaand) return fout("Rit niet gevonden.", 404);
+        const b = await leesBody(req);
+        const { rit, fout: f } = ritVelden(b, bestaand);
+        if (f) return fout(f);
+        if (b.gpx && typeof b.gpx.tekst === "string") {
+          if (b.gpx.tekst.length > MAX_GPX) return fout("Het GPX-bestand is groter dan 5 MB.");
+          const route = schoonRoute(b.route);
+          if (!route) return fout("In dit GPX-bestand staat geen bruikbare route.");
+          rit.route = route;
+          rit.gpxNaam = tekst(b.gpx.naam, 120) || `${rit.titel}.gpx`;
+          await store.set(`gpx/${rit.id}`, b.gpx.tekst);
+        }
+        rit.bijgewerkt = new Date().toISOString();
+        await store.setJSON(`ritten/${rit.id}`, rit);
+        return json({ rit });
+      }
+
+      if (deel[1] === "ritten" && deel[2] && m === "DELETE") {
+        await store.delete(`ritten/${deel[2]}`);
+        await store.delete(`gpx/${deel[2]}`);
+        const { blobs } = await store.list({ prefix: `aanmelding/${deel[2]}/` });
+        await Promise.all(blobs.map((b) => store.delete(b.key)));
+        return json({ ok: true });
+      }
+
+      if (pad === "admin/demo" && m === "DELETE") {
+        const leden = await alleLeden();
+        const demoLeden = leden.filter((l) => l.demo);
+        const { blobs } = await store.list({ prefix: "ritten/" });
+        const ritten = (await Promise.all(blobs.map((b) => store.get(b.key, { type: "json" })))).filter((r) => r && r.demo);
+        for (const r of ritten) {
+          await store.delete(`ritten/${r.id}`); await store.delete(`gpx/${r.id}`);
+        }
+        const aanm = await store.list({ prefix: "aanmelding/" });
+        const weg = new Set([...demoLeden.map((l) => l.id)]);
+        const ritWeg = new Set(ritten.map((r) => r.id));
+        await Promise.all(aanm.blobs.filter((b) => { const [, rId, lId] = b.key.split("/"); return weg.has(lId) || ritWeg.has(rId); }).map((b) => store.delete(b.key)));
+        const chat = await store.list({ prefix: "chat/" });
+        const chatRijen = await Promise.all(chat.blobs.map((b) => store.get(b.key, { type: "json" })));
+        await Promise.all(chatRijen.filter((c) => c && (c.demo || weg.has(c.lidId))).map((c) => store.delete(`chat/${c.id}`)));
+        await Promise.all(demoLeden.map((l) => store.delete(`leden/${l.id}`)));
+        return json({ ok: true, ritten: ritten.length, leden: demoLeden.length });
+      }
+
+      if (pad === "admin/demo" && m === "POST") {
+        const b = await leesBody(req);
+        // Voorbeeldinhoud: ritten met GPX, demoleden en aanmeldingen.
+        const leden = await alleLeden();
+        let volgend = Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1;
+        const idMap = {};
+        for (const d of b.leden || []) {
+          const id = "demo-" + nieuwId(6);
+          idMap[d.sleutel] = id;
+          await store.setJSON(`leden/${id}`, { id, naam: tekst(d.naam, 60), email: `${id}@demo.invalid`, rol: "lid", rugnummer: volgend++, fietsen: d.fietsen || [], wachtwoord: await hashGeheim(nieuwId(16)), demo: true, aangemaakt: new Date().toISOString() });
+        }
+        idMap.admin = lid.id;
+        for (const r of b.ritten || []) {
+          const { rit, fout: f } = ritVelden(r);
+          if (f) continue;
+          const route = schoonRoute(r.route);
+          if (!route) continue;
+          const id = nieuwId(8);
+          await store.set(`gpx/${id}`, r.gpx.tekst);
+          await store.setJSON(`ritten/${id}`, { ...rit, id, route, gpxNaam: r.gpx.naam, gemaaktDoor: lid.naam, demo: true, aangemaakt: new Date().toISOString() });
+          for (const a of r.aanmeldingen || []) {
+            const lidId = idMap[a.sleutel];
+            if (lidId) await store.setJSON(`aanmelding/${id}/${lidId}`, { ritId: id, lidId, status: a.status, thuis: a.thuis || null, notitie: a.notitie || "", bijgewerkt: new Date().toISOString() });
+          }
+        }
+        let t = Date.now() - (b.chat || []).length * 3600e3;
+        for (const c of b.chat || []) {
+          const lidId = idMap[c.sleutel]; if (!lidId) continue;
+          const l = await store.get(`leden/${lidId}`, { type: "json" });
+          const id = `${String(t).padStart(14, "0")}-${nieuwId(6)}`;
+          await store.setJSON(`chat/${id}`, { id, lidId, naam: l.naam, rugnummer: l.rugnummer, tekst: c.tekst, fotoId: null, tijd: new Date(t).toISOString(), demo: true });
+          t += 3600e3 * (0.3 + Math.random());
+        }
+        return json({ ok: true });
+      }
+    }
+
+    return fout("Onbekende route.", 404);
+  } catch (e) {
+    console.error(e);
+    return fout("Er ging iets mis op de server. Probeer het zo nog eens.", 500);
+  }
+};
+
+export const config = { path: "/api/*" };
