@@ -24,12 +24,12 @@ const rit = (sleutel, titel, type, dagenVanaf, starttijd, omschrijving, aanmeldi
 
 const data = {
   leden: [
-    { sleutel: "sjoerd", naam: "Sjoerd de Vries", fietsen: ["race", "gravel"] },
-    { sleutel: "anneke", naam: "Anneke Hoekstra", fietsen: ["race"] },
-    { sleutel: "wietse", naam: "Wietse Bakker", fietsen: ["gravel", "atb"] },
-    { sleutel: "marrit", naam: "Marrit Visser", fietsen: ["race", "atb"] },
-    { sleutel: "jelle", naam: "Jelle Postma", fietsen: ["atb"] },
-    { sleutel: "hylke", naam: "Hylke Dijkstra", fietsen: ["race", "gravel", "atb"] },
+    { sleutel: "sjoerd", naam: "De Kannibaal", fietsen: ["race", "gravel"] },
+    { sleutel: "anneke", naam: "De Das", fietsen: ["race"] },
+    { sleutel: "wietse", naam: "Monsieur Chrono", fietsen: ["gravel", "atb"] },
+    { sleutel: "marrit", naam: "Il Campionissimo", fietsen: ["race", "atb"] },
+    { sleutel: "jelle", naam: "De Eeuwige Tweede", fietsen: ["atb"] },
+    { sleutel: "hylke", naam: "De Leeuw van Vlaanderen", fietsen: ["race", "gravel", "atb"] },
   ],
   ritten: [
     rit("race", "Gaasterland Klassieker", "race", 3, "08:30",
@@ -49,11 +49,11 @@ const data = {
       "oranjewoud.gpx"),
   ],
   chat: [
-    { sleutel: "sjoerd", tekst: "Mannen en vrouwen, zondag Gaasterland! Wie gaat er mee?" },
-    { sleutel: "anneke", tekst: "Ik ga mee, maar moet om half 12 thuis zijn. Ik haak af bij Sloten." },
+    { sleutel: "sjoerd", tekst: "Mannen en vrouwen, zondag Gaasterland! Wie gaat er mee? Ik rijd voor de winst, ook bij de koffiestop." },
+    { sleutel: "anneke", tekst: "Ik ga mee, maar moet om half 12 thuis zijn. Ik haak af bij Sloten. Maar tot daar rijd ik op kop." },
     { sleutel: "hylke", tekst: "Heb net de verwachting gezien: wind uit het zuidwesten. Op de terugweg lekker in de rug" },
     { sleutel: "wietse", tekst: "Gravel in het Wold staat ook op de kalender. Wie heeft er nog brede banden over?" },
-    { sleutel: "jelle", tekst: "Ik! 40 mm, ligt in de schuur." },
+    { sleutel: "jelle", tekst: "Ik! 40 mm, ligt in de schuur. Ik kom als tweede binnen, zoals altijd." },
   ],
 };
 fs.writeFileSync(new URL("../public/demo.json", import.meta.url), JSON.stringify(data));
