@@ -3,3 +3,4 @@ dist
 .netlify
 .local-store
 .DS_Store
+*.tar.gz
