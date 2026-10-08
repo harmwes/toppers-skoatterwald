@@ -5,6 +5,8 @@ import {
   config as leesConfig, bewaarConfig, hashGeheim, klopt, nieuwId, huidigLid, maakSessie, wisCookie,
   maakAdminSessie, adminOntgrendeld, remPoging, SESSIE_COOKIE, ADMIN_COOKIE,
 } from "../lib/auth.mjs";
+import { stuurMail, mailserverAan, AFZENDER } from "../lib/mailer.mjs";
+import { welkomTekst, welkomOnderwerp } from "../../src/lib/mail.js";
 
 const TYPES = ["race", "gravel", "atb"];
 const STATUS = ["ja", "nee", "misschien"];
@@ -51,16 +53,30 @@ function mobielNummer(v) {
   return /^\+[1-9]\d{7,14}$/.test(t) ? t : null;
 }
 
-// Inlogcode van 8 cijfers, cryptografisch willekeurig.
-function nieuweCode() {
-  const b = crypto.getRandomValues(new Uint32Array(2));
-  return String((b[0] % 90000000) + 10000000);
+// Wachtwoord dat de admin voor een fietser kiest. Geeft het wachtwoord, of null als het niet deugt.
+const MIN_WACHTWOORD = 8;
+function gekozenWachtwoord(b) {
+  const w = typeof b?.wachtwoord === "string" ? b.wachtwoord.trim() : "";
+  return w.length >= MIN_WACHTWOORD && w.length <= 100 ? w : null;
+}
+const wachtwoordFout = () => fout(`Kies een wachtwoord van minstens ${MIN_WACHTWOORD} tekens.`);
+
+// Welkomstmail (of mail met een nieuw wachtwoord) via de mailserver.
+async function stuurWelkom(doel, wachtwoord, { nieuwWachtwoord = false, afzender = "" } = {}) {
+  const gegevens = { naam: doel.naam, email: doel.email, wachtwoord, nieuwWachtwoord, afzender: afzender !== "Admin" ? afzender : "" };
+  return stuurMail({ aan: doel.email, onderwerp: welkomOnderwerp(gegevens), tekst: welkomTekst(gegevens) });
 }
 
-// Mail naar de organisatie bij een nieuwe aanvraag, via FormSubmit (geen account of sleutel nodig).
-// Het adres stelt de admin zelf in; een nieuw adres moet één keer bevestigd worden via de eerste mail.
+// Mail naar de organisatie bij een nieuwe aanvraag. Via de mailserver als die is ingesteld,
+// anders via FormSubmit (een nieuw adres moet daar één keer bevestigd worden via de eerste mail).
 async function meldAanvraag(cfg, a, test = false) {
   if (!cfg.meldingsEmail) return { verstuurd: false, reden: "geen adres" };
+  if (mailserverAan()) {
+    const tekstregels = test
+      ? "Dit is een test vanuit de app. Meldingen komen op dit adres binnen."
+      : `${a.naam} wil meedoen met Toppers Skoatterwâld.\n\nE-mailadres: ${a.email}\nFietst: ${(a.fietsen || []).join(", ") || "-"}\nBericht: ${a.bericht || "-"}\n\nOpen de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen:\nhttps://toppers-skoatterwald.netlify.app/admin?tab=aanvragen`;
+    return stuurMail({ aan: cfg.meldingsEmail, onderwerp: test ? "Toppers Skoatterwâld: testmelding" : `Toppers Skoatterwâld: ${a.naam} wil meedoen`, tekst: tekstregels });
+  }
   try {
     const r = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(cfg.meldingsEmail)}`, {
       method: "POST", signal: AbortSignal.timeout(7000),
@@ -251,7 +267,7 @@ export default async (req) => {
     if (pad === "ik" && m === "GET") {
       const cfg = await leesConfig();
       const aanvragen = lid.rol === "admin" ? (await alleAanvragen()).length : undefined;
-      return json({ lid: eigen(lid), adminOpen: await adminOntgrendeld(req, lid), codeStandaard: lid.rol === "admin" ? !!cfg.codeStandaard : undefined, aanvragen, meldingsEmail: lid.rol === "admin" ? cfg.meldingsEmail || "" : undefined });
+      return json({ lid: eigen(lid), adminOpen: await adminOntgrendeld(req, lid), codeStandaard: lid.rol === "admin" ? !!cfg.codeStandaard : undefined, aanvragen, meldingsEmail: lid.rol === "admin" ? cfg.meldingsEmail || "" : undefined, mailserver: lid.rol === "admin" ? mailserverAan() : undefined });
     }
 
     if (pad === "ik" && m === "PUT") {
@@ -459,23 +475,25 @@ export default async (req) => {
       }
 
       if (deel[1] === "aanvragen" && deel[2] && deel[3] === "accepteer" && m === "POST") {
+        const wachtwoord = gekozenWachtwoord(await leesBody(req));
+        if (!wachtwoord) return wachtwoordFout();
         const a = await store.get(`aanvragen/${deel[2]}`, { type: "json" });
         if (!a) return fout("Deze aanvraag bestaat niet meer.", 404);
         if (await vindOpEmail(a.email)) {
           await store.delete(`aanvragen/${a.id}`);
-          return fout("Er is al een account met dit e-mailadres. Stuur die persoon een nieuwe code via Fietsers.");
+          return fout("Er is al een account met dit e-mailadres. Geef die persoon een nieuw wachtwoord via Fietsers.");
         }
         const leden = await alleLeden();
-        const code = nieuweCode();
         const nieuw = {
           id: nieuwId(10), naam: a.naam, email: a.email, mobiel: a.mobiel || "", rol: "lid",
           rugnummer: Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
-          fietsen: a.fietsen || [], wachtwoord: await hashGeheim(code), wachtwoordStandaard: true,
+          fietsen: a.fietsen || [], wachtwoord: await hashGeheim(wachtwoord), wachtwoordStandaard: true,
           aangemaakt: new Date().toISOString(), viaAanvraag: true,
         };
         await store.setJSON(`leden/${nieuw.id}`, nieuw);
         await store.delete(`aanvragen/${a.id}`);
-        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, code });
+        const mail = await stuurWelkom(nieuw, wachtwoord, { afzender: lid.naam });
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, mail: { ...mail, van: AFZENDER } });
       }
 
       if (deel[1] === "aanvragen" && deel[2] && m === "DELETE") {
@@ -483,15 +501,17 @@ export default async (req) => {
         return json({ ok: true });
       }
 
-      if (deel[1] === "leden" && deel[2] && deel[3] === "nieuwecode" && m === "POST") {
+      if (deel[1] === "leden" && deel[2] && deel[3] === "nieuwwachtwoord" && m === "POST") {
+        const wachtwoord = gekozenWachtwoord(await leesBody(req));
+        if (!wachtwoord) return wachtwoordFout();
         const doel = await store.get(`leden/${deel[2]}`, { type: "json" });
         if (!doel) return fout("Lid niet gevonden.", 404);
         if (doel.demo) return fout("Voorbeeldrenners kunnen niet inloggen.");
-        const code = nieuweCode();
-        doel.wachtwoord = await hashGeheim(code);
+        doel.wachtwoord = await hashGeheim(wachtwoord);
         doel.wachtwoordStandaard = true;
         await store.setJSON(`leden/${doel.id}`, doel);
-        return json({ lid: { ...publiek(doel), email: doel.email, mobiel: doel.mobiel || "" }, code });
+        const mail = await stuurWelkom(doel, wachtwoord, { nieuwWachtwoord: true, afzender: lid.naam });
+        return json({ lid: { ...publiek(doel), email: doel.email, mobiel: doel.mobiel || "" }, mail: { ...mail, van: AFZENDER } });
       }
 
       if (pad === "admin/leden" && m === "GET") {
@@ -506,16 +526,18 @@ export default async (req) => {
         if (await vindOpEmail(b.email)) return fout("Dit e-mailadres is al in gebruik.");
         const mobiel = mobielNummer(b.mobiel);
         if (mobiel === null) return fout("Dit mobiele nummer klopt niet. Laat het leeg of vul bijvoorbeeld 06 12345678 in.");
-        const code = typeof b.wachtwoord === "string" && b.wachtwoord.length >= 6 ? b.wachtwoord : nieuweCode();
+        const wachtwoord = gekozenWachtwoord(b);
+        if (!wachtwoord) return wachtwoordFout();
         const leden = await alleLeden();
         const nieuw = {
           id: nieuwId(10), naam, email: b.email.trim().toLowerCase(), mobiel, rol: b.rol === "admin" ? "admin" : "lid",
           rugnummer: Number(b.rugnummer) || Math.max(0, ...leden.map((l) => l.rugnummer || 0)) + 1,
           fietsen: Array.isArray(b.fietsen) ? b.fietsen.filter((f) => TYPES.includes(f)) : [],
-          wachtwoord: await hashGeheim(code), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
+          wachtwoord: await hashGeheim(wachtwoord), wachtwoordStandaard: true, aangemaakt: new Date().toISOString(),
         };
         await store.setJSON(`leden/${nieuw.id}`, nieuw);
-        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, code });
+        const mail = await stuurWelkom(nieuw, wachtwoord, { afzender: lid.naam });
+        return json({ lid: { ...publiek(nieuw), email: nieuw.email, mobiel: nieuw.mobiel }, mail: { ...mail, van: AFZENDER } });
       }
 
       if (deel[1] === "leden" && deel[2] && m === "PUT") {

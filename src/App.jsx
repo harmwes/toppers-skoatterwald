@@ -43,7 +43,7 @@ export default function App() {
   const herlaadIk = useCallback(async () => {
     try {
       const r = await api("ik");
-      setSessie({ laden: false, lid: r.lid, adminOpen: r.adminOpen, codeStandaard: r.codeStandaard, aanvragen: r.aanvragen || 0, meldingsEmail: r.meldingsEmail || "" });
+      setSessie({ laden: false, lid: r.lid, adminOpen: r.adminOpen, codeStandaard: r.codeStandaard, aanvragen: r.aanvragen || 0, meldingsEmail: r.meldingsEmail || "", mailserver: !!r.mailserver });
     } catch (e) {
       setSessie({ laden: false, lid: null, fout: e.status === 401 ? null : e.message });
     }

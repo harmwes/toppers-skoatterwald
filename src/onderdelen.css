@@ -500,3 +500,9 @@ html { overflow-x: clip; }
 .uitlog-tekst { margin: 0 0 16px; color: var(--krijt-2); line-height: 1.5; }
 .blad-achter { text-align: left; }
 .bubbel.tikbaar { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+/* Wachtwoord dat de admin voor een fietser kiest */
+.wachtwoord-rij { display: flex; gap: 8px; align-items: stretch; }
+.wachtwoord-rij .invoer { flex: 1; min-width: 0; font-weight: 600; letter-spacing: .02em; }
+.wachtwoord-rij .knop { flex: none; white-space: nowrap; }
+.wachtwoord-groot { background: var(--krijt); color: var(--asfalt); border-radius: 10px; font-family: var(--kop); font-weight: 800; font-size: 26px; text-align: center; padding: 8px 10px 6px; margin: 12px 0 14px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.12); overflow-wrap: anywhere; user-select: all; }

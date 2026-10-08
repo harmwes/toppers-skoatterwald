@@ -30,17 +30,17 @@ function MeedoenBlad({ open, onSluit }) {
         <div className="meedoen-klaar">
           <div className="meedoen-vlag"><Icoon naam="vink" /></div>
           <p><b>Bedankt, {v.naam.split(" ")[0]}!</b> Je aanvraag is binnen bij de organisatie.</p>
-          <p>Zodra je bent toegelaten, krijg je {v.mobiel.trim() ? <>een bericht via WhatsApp of een mail op <b>{v.email.trim().toLowerCase()}</b></> : <>een mail op <b>{v.email.trim().toLowerCase()}</b></>} met je persoonlijke inlogcode en een link naar de handleiding. Kijk voor de zekerheid ook even in je spam.</p>
+          <p>Zodra je bent toegelaten, krijg je een mail van harmwesseling@yahoo.com op <b>{v.email.trim().toLowerCase()}</b> met je wachtwoord en een link naar de handleiding. Kijk voor de zekerheid ook even in je spam.</p>
           <p className="klein">Tot die tijd: banden oppompen en ketting smeren.</p>
           <button className="knop vol" onClick={onSluit}>Sluiten</button>
         </div>
       ) : (
         <form onSubmit={verstuur}>
-          <p className="meedoen-intro">Fiets je graag mee op de racefiets, gravelbike of mountainbike? Laat je gegevens achter. De organisatie bekijkt je aanvraag en stuurt je je inlogcode.</p>
+          <p className="meedoen-intro">Fiets je graag mee op de racefiets, gravelbike of mountainbike? Laat je gegevens achter. De organisatie bekijkt je aanvraag en stuurt je een wachtwoord.</p>
           {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
           <label className="veld"><span>Je naam</span><input className="invoer" required maxLength={60} autoComplete="name" value={v.naam} onChange={(e) => setV({ ...v, naam: e.target.value })} placeholder="Voor- en achternaam" /></label>
           <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" required autoComplete="email" inputMode="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} placeholder="jij@voorbeeld.nl" /></label>
-          <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={v.mobiel} onChange={(e) => setV({ ...v, mobiel: e.target.value })} placeholder="06 12345678" /><small className="klein veldhulp">Vul je dit in, dan kan de organisatie je inlogcode ook via WhatsApp sturen.</small></label>
+          <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={v.mobiel} onChange={(e) => setV({ ...v, mobiel: e.target.value })} placeholder="06 12345678" /><small className="klein veldhulp">Vul je dit in, dan kan de organisatie je ook via WhatsApp bereiken.</small></label>
           <div className="veld">
             <span>Waar fiets je op? (optioneel)</span>
             <div className="meedoen-fietsen">
@@ -106,7 +106,7 @@ export default function Login({ onIngelogd, fout: startFout }) {
             <input className="invoer" type="email" autoComplete="username" inputMode="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jij@voorbeeld.nl" />
           </label>
           <label className="veld">
-            <span>Wachtwoord of code</span>
+            <span>Wachtwoord</span>
             <div className="wachtwoordveld">
               <input className="invoer" type={toon ? "text" : "password"} autoComplete="current-password" required value={wachtwoord} onChange={(e) => setWachtwoord(e.target.value)} />
               <button type="button" className="toon" onClick={() => setToon(!toon)}>{toon ? "Verberg" : "Toon"}</button>
@@ -118,7 +118,7 @@ export default function Login({ onIngelogd, fout: startFout }) {
           <div className="login-scheiding"><span>nog geen account?</span></div>
           <button type="button" className="knop vol meedoen-knop" onClick={() => setMeedoen(true)}><Icoon naam="handzwaai" />Meedoen</button>
           <InstallerenKnop className="vol stil installeer-login" />
-          <p className="klein login-hulp">Code of wachtwoord kwijt? Vraag de organisatie om een nieuwe code. Die krijg je per mail of WhatsApp.</p>
+          <p className="klein login-hulp">Wachtwoord kwijt? Vraag de organisatie om een nieuw wachtwoord. Dat krijg je per mail.</p>
         </form>
         <div className="login-voet klein">Een idee van Harm · <Pompeblad className="pompeblad i14" /> Skoatterwâld</div>
       </div>

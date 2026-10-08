@@ -1,7 +1,7 @@
 {
   "name": "toppers-skoatterwald",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Toppers Skoatterwald: de app van de fietsgroep. Ritten, GPX, weer en wind, startlijst en groepschat.",
   "scripts": {
@@ -14,6 +14,7 @@
     "@fontsource/barlow-condensed": "^5.3.0",
     "@netlify/blobs": "^11.1.1",
     "leaflet": "^1.9.4",
+    "nodemailer": "^7.0.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

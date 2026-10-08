@@ -133,7 +133,7 @@ export default function Profiel() {
             <M m={melding.gegevens} />
             <label className="veld"><span>Naam</span><input className="invoer" value={naam} onChange={(e) => setNaam(e.target.value)} required maxLength={60} /></label>
             <label className="veld"><span>E-mailadres (hiermee log je in)</span><input className="invoer" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-            <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={mobiel} onChange={(e) => setMobiel(e.target.value)} placeholder="06 12345678" /><small className="klein veldhulp">Alleen zichtbaar voor de organisatie, bijvoorbeeld om je een nieuwe code via WhatsApp te sturen.</small></label>
+            <label className="veld"><span>Mobiel nummer (optioneel)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={mobiel} onChange={(e) => setMobiel(e.target.value)} placeholder="06 12345678" /><small className="klein veldhulp">Alleen zichtbaar voor de organisatie, bijvoorbeeld om je via WhatsApp te bereiken.</small></label>
             {email.trim().toLowerCase() !== lid.email && (
               <label className="veld"><span>Huidig wachtwoord ter bevestiging</span><input className="invoer" type="password" autoComplete="current-password" value={pwVoorEmail} onChange={(e) => setPwVoorEmail(e.target.value)} required /></label>
             )}

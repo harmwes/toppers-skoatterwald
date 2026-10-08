@@ -69,8 +69,39 @@ function Cijferslot({ onOpen }) {
   );
 }
 
-// Na accepteren of een nieuwe code: de code groot in beeld, en de admin kiest hoe het bericht verstuurd wordt.
-function CodeKaart({ gegevens, onKlaar }) {
+// Leesbaar wachtwoord om voor te stellen, bijvoorbeeld "Waaier-Bidon-47".
+const WOORDEN = ["Bidon", "Waaier", "Kopwerk", "Klimmer", "Sprinter", "Peloton", "Zadel", "Ketting", "Kasseien", "Dijk", "Polder", "Wiel", "Spaak", "Pedaal", "Tandem", "Helling", "Afdaling", "Wind", "Kopman", "Knecht", "Tempo", "Gravel", "Bergop", "Finish"];
+function bedenkWachtwoord() {
+  const r = crypto.getRandomValues(new Uint32Array(3));
+  const w1 = WOORDEN[r[0] % WOORDEN.length];
+  let w2 = WOORDEN[r[1] % WOORDEN.length];
+  if (w2 === w1) w2 = WOORDEN[(r[1] + 1) % WOORDEN.length];
+  return `${w1}-${w2}-${10 + (r[2] % 90)}`;
+}
+export const MIN_WACHTWOORD = 8;
+
+// Invoerveld waarin de admin het wachtwoord voor een fietser kiest, met een knop die er een bedenkt.
+function WachtwoordVeld({ waarde, onWijzig, label = "Wachtwoord voor deze fietser" }) {
+  return (
+    <label className="veld">
+      <span>{label}</span>
+      <div className="wachtwoord-rij">
+        <input className="invoer tab" type="text" autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} minLength={MIN_WACHTWOORD} maxLength={100} required value={waarde} onChange={(e) => onWijzig(e.target.value)} placeholder={`minstens ${MIN_WACHTWOORD} tekens`} />
+        <button type="button" className="knop klein" onClick={() => onWijzig(bedenkWachtwoord())}><Icoon naam="sleutel" />Bedenk er een</button>
+      </div>
+      <small className="klein veldhulp">De fietser krijgt dit wachtwoord per mail en kan het later zelf wijzigen bij Profiel.</small>
+    </label>
+  );
+}
+
+const MAILREDEN = {
+  "geen-mailserver": "de mailserver is nog niet ingesteld",
+  "inloggen-mislukt": "de mailserver accepteerde het app-wachtwoord van Yahoo niet",
+  "versturen-mislukt": "de mailserver gaf een fout",
+};
+
+// Na accepteren of een nieuw wachtwoord: laat zien of de mail is verstuurd, met WhatsApp en eigen mail als reserve.
+function WelkomKaart({ gegevens, onKlaar }) {
   const { lid } = useApp();
   const volledig = { ...gegevens, afzender: lid.naam !== "Admin" ? lid.naam : "" };
   const [verstuurd, setVerstuurd] = useState({});
@@ -78,24 +109,28 @@ function CodeKaart({ gegevens, onKlaar }) {
   const voornaam = gegevens.naam.split(" ")[0];
   const zet = (k) => setVerstuurd((v) => ({ ...v, [k]: true }));
   const kaart = useRef(null);
+  const mailOk = !!gegevens.mail?.verstuurd;
   useEffect(() => { setTimeout(() => kaart.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }, []);
   return (
     <div className="kaart pad codekaart" ref={kaart} style={{ scrollMarginTop: 16 }}>
-      <div className="label">{gegevens.nieuweCode ? "Nieuwe code voor" : "Toegelaten:"} {gegevens.naam}</div>
-      <div className="code-cijfers tab" aria-label={`Code ${gegevens.code}`}>
-        {gegevens.code.split("").map((c, i) => <span key={i}>{c}</span>)}
-      </div>
-      <p className="klein" style={{ margin: "0 0 12px" }}>Stuur {voornaam} het welkomstbericht met de code en de link naar de handleiding. Kies hoe. Het bericht staat klaar, je drukt alleen nog op verzenden.</p>
+      <div className="label">{gegevens.nieuwWachtwoord ? "Nieuw wachtwoord voor" : "Toegelaten:"} {gegevens.naam}</div>
+      <div className="wachtwoord-groot tab" aria-label={`Wachtwoord ${gegevens.wachtwoord}`}>{gegevens.wachtwoord}</div>
+      {mailOk ? (
+        <div className="melding ok"><Icoon naam="vink" /><span>De mail is verstuurd naar <b>{gegevens.email}</b>, met afzender {gegevens.mail.van}. Je hoeft verder niets te doen.</span></div>
+      ) : (
+        <div className="melding let"><Icoon naam="let" /><span>De mail is niet automatisch verstuurd: {MAILREDEN[gegevens.mail?.reden] || "onbekende fout"}. Stuur {voornaam} het bericht hieronder zelf.</span></div>
+      )}
+      <p className="klein" style={{ margin: "0 0 12px" }}>{mailOk ? `Wil je ${voornaam} ook via WhatsApp laten weten dat er een mail is? Het bericht staat klaar.` : "Kies hoe. Het bericht staat klaar, je drukt alleen nog op verzenden."}</p>
       <div className="verstuurkeuze">
         <a className={`verstuurknop-groot wa ${verstuurd.wa ? "gedaan" : ""}`} href={welkomWhatsApp(volledig)} target="_blank" rel="noreferrer" onClick={() => zet("wa")}>
           <Icoon naam={verstuurd.wa ? "vink" : "chat"} />
           <b>WhatsApp</b>
           <span className="klein">{gegevens.mobiel ? toonMobiel(gegevens.mobiel) : "je kiest zelf het gesprek"}</span>
         </a>
-        <button type="button" className={`verstuurknop-groot mail ${verstuurd.mail ? "gedaan" : ""}`} onClick={() => { zet("mail"); openMail(volledig); }}>
-          <Icoon naam={verstuurd.mail ? "vink" : "mail"} />
-          <b>Mail</b>
-          <span className="klein">{gegevens.email}</span>
+        <button type="button" className={`verstuurknop-groot mail ${verstuurd.mail || mailOk ? "gedaan" : ""}`} onClick={() => { zet("mail"); openMail(volledig); }}>
+          <Icoon naam={verstuurd.mail || mailOk ? "vink" : "mail"} />
+          <b>{mailOk ? "Nog eens" : "Mail"}</b>
+          <span className="klein">{mailOk ? "uit je eigen mail" : gegevens.email}</span>
         </button>
       </div>
       <div className="knoppenrij" style={{ marginTop: 10 }}>
@@ -113,15 +148,18 @@ function Aanvragen({ onAantal }) {
   const [fout, setFout] = useState("");
   const [resultaat, setResultaat] = useState(null);
   const [afwijzen, setAfwijzen] = useState(false);
+  const [wachtwoord, setWachtwoord] = useState("");
 
   const laad = () => api("admin/aanvragen").then((r) => { setLijst(r.aanvragen); onAantal(r.aanvragen.length); }).catch((e) => setFout(e.message));
   useEffect(() => { laad(); }, []);
 
-  async function accepteer() {
+  async function accepteer(e) {
+    e?.preventDefault();
+    if (wachtwoord.trim().length < MIN_WACHTWOORD) { setFout(`Kies een wachtwoord van minstens ${MIN_WACHTWOORD} tekens.`); return; }
     setBezig(true); setFout("");
     try {
-      const r = await api(`admin/aanvragen/${gekozen.id}/accepteer`, { methode: "POST" });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code });
+      const r = await api(`admin/aanvragen/${gekozen.id}/accepteer`, { methode: "POST", body: { wachtwoord: wachtwoord.trim() } });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, wachtwoord: wachtwoord.trim(), mail: r.mail });
       setGekozen(null); laad();
     } catch (e) { setFout(e.message); laad(); }
     setBezig(false);
@@ -135,7 +173,7 @@ function Aanvragen({ onAantal }) {
 
   return (
     <div>
-      {resultaat && <CodeKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
+      {resultaat && <WelkomKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
       {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
       {!lijst && <div className="skelet" style={{ height: 160 }} />}
       {lijst && !lijst.length && !resultaat && (
@@ -147,7 +185,7 @@ function Aanvragen({ onAantal }) {
       )}
       <div className="ledenlijst">
         {lijst?.map((a) => (
-          <button key={a.id} className="lidrij klikbaar" onClick={() => { setGekozen(a); setAfwijzen(false); setFout(""); }}>
+          <button key={a.id} className="lidrij klikbaar" onClick={() => { setGekozen(a); setAfwijzen(false); setFout(""); setWachtwoord(bedenkWachtwoord()); }}>
             <span className="aanvraag-avatar">{a.naam.slice(0, 1).toUpperCase()}</span>
             <div className="lid-info">
               <b>{a.naam}<em className="rolbadge nieuw">nieuw</em></b>
@@ -168,11 +206,15 @@ function Aanvragen({ onAantal }) {
               {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
               {gekozen.bericht && <div><dt>Bericht</dt><dd className="bericht">“{gekozen.bericht}”</dd></div>}
             </dl>
-            <p className="klein">Bij <b>Accepteren</b> maakt de app een persoonlijke code van 8 cijfers. Daarna kies je of je het welkomstbericht via WhatsApp of mail stuurt.</p>
-            <div className="keuze2">
-              <button className="knop primair" onClick={accepteer} disabled={bezig}><Icoon naam="vink" />Accepteren</button>
-              <button className={`knop ${afwijzen ? "gevaar" : ""}`} onClick={wijsAf} disabled={bezig}><Icoon naam="kruis" />{afwijzen ? "Zeker afwijzen?" : "Afwijzen"}</button>
-            </div>
+            <form onSubmit={accepteer}>
+              <WachtwoordVeld waarde={wachtwoord} onWijzig={setWachtwoord} />
+              <p className="klein" style={{ marginTop: 0 }}>Bij <b>Accepteren</b> krijgt {gekozen.naam.split(" ")[0]} meteen een welkomstmail met dit wachtwoord en de link naar de app.</p>
+              {fout && <div className="melding fout"><Icoon naam="let" />{fout}</div>}
+              <div className="keuze2">
+                <button className="knop primair" disabled={bezig}><Icoon naam="vink" />{bezig ? "Bezig…" : "Accepteren"}</button>
+                <button type="button" className={`knop ${afwijzen ? "gevaar" : ""}`} onClick={wijsAf} disabled={bezig}><Icoon naam="kruis" />{afwijzen ? "Zeker afwijzen?" : "Afwijzen"}</button>
+              </div>
+            </form>
             {afwijzen && <p className="klein" style={{ marginTop: 10 }}>De aanvraag wordt verwijderd. Er gaat geen bericht naar de aanvrager.</p>}
           </div>
         )}
@@ -193,6 +235,7 @@ function Leden() {
   const [bevestig, setBevestig] = useState(null);
   const [bezig, setBezig] = useState(false);
   const [zoek, setZoek] = useState("");
+  const [nieuwWw, setNieuwWw] = useState("");
 
   const laad = () => api("admin/leden").then((r) => setLeden(r.leden)).catch((e) => setMelding({ fout: e.message }));
   useEffect(() => { laad(); api("ritten").then((r) => setRitten(r.ritten)).catch(() => {}); }, []);
@@ -201,19 +244,21 @@ function Leden() {
     e.preventDefault();
     setMelding(null); setBezig(true);
     try {
-      const r = await api("admin/leden", { methode: "POST", body: { naam: nieuw.naam, email: nieuw.email, mobiel: nieuw.mobiel, rol: nieuw.rol } });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code });
+      const r = await api("admin/leden", { methode: "POST", body: { naam: nieuw.naam, email: nieuw.email, mobiel: nieuw.mobiel, rol: nieuw.rol, wachtwoord: nieuw.wachtwoord.trim() } });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, wachtwoord: nieuw.wachtwoord.trim(), mail: r.mail });
       setNieuw(null); laad();
     } catch (err) { setMelding({ fout: err.message }); }
     setBezig(false);
   }
 
-  async function nieuweCode() {
-    if (bevestig !== "code") { setBevestig("code"); return; }
+  async function nieuwWachtwoord(e) {
+    e?.preventDefault();
+    if (bevestig !== "code") { setBevestig("code"); setNieuwWw(bedenkWachtwoord()); return; }
+    if (nieuwWw.trim().length < MIN_WACHTWOORD) return;
     setBezig(true);
     try {
-      const r = await api(`admin/leden/${gekozen.id}/nieuwecode`, { methode: "POST" });
-      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, code: r.code, nieuweCode: true });
+      const r = await api(`admin/leden/${gekozen.id}/nieuwwachtwoord`, { methode: "POST", body: { wachtwoord: nieuwWw.trim() } });
+      setResultaat({ naam: r.lid.naam, email: r.lid.email, mobiel: r.lid.mobiel, wachtwoord: nieuwWw.trim(), mail: r.mail, nieuwWachtwoord: true });
       setGekozen(null); setBevestig(null); laad();
     } catch (err) { setMelding({ fout: err.message }); setGekozen(null); }
     setBezig(false);
@@ -250,17 +295,18 @@ function Leden() {
   return (
     <div>
       {melding && <div className={`melding ${melding.ok ? "ok" : "fout"}`}><Icoon naam={melding.ok ? "vink" : "let"} />{melding.ok || melding.fout}</div>}
-      {resultaat && <CodeKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
+      {resultaat && <WelkomKaart gegevens={resultaat} onKlaar={() => setResultaat(null)} />}
 
       {!nieuw ? (
-        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", mobiel: "", rol: "lid" }); setResultaat(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
+        <button className="knop primair vol" onClick={() => { setNieuw({ naam: "", email: "", mobiel: "", rol: "lid", wachtwoord: bedenkWachtwoord() }); setResultaat(null); }}><Icoon naam="plus" />Fietser toevoegen</button>
       ) : (
         <form className="kaart pad" onSubmit={voegToe}>
           <h3 style={{ marginBottom: 6 }}>Nieuwe fietser</h3>
-          <p className="klein" style={{ marginTop: 0 }}>De app maakt een code van 8 cijfers. Daarna stuur je het welkomstbericht via WhatsApp of mail.</p>
+          <p className="klein" style={{ marginTop: 0 }}>Je kiest een wachtwoord. De fietser krijgt meteen een welkomstmail met het wachtwoord en de link naar de app.</p>
           <label className="veld"><span>Naam</span><input className="invoer" required value={nieuw.naam} onChange={(e) => setNieuw({ ...nieuw, naam: e.target.value })} autoFocus /></label>
           <label className="veld"><span>E-mailadres</span><input className="invoer" type="email" required value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></label>
           <label className="veld"><span>Mobiel nummer (optioneel, voor WhatsApp)</span><input className="invoer tab" type="tel" inputMode="tel" autoComplete="off" value={nieuw.mobiel} onChange={(e) => setNieuw({ ...nieuw, mobiel: e.target.value })} placeholder="06 12345678" /></label>
+          <WachtwoordVeld waarde={nieuw.wachtwoord} onWijzig={(w) => setNieuw({ ...nieuw, wachtwoord: w })} />
           <label className="schakelaar"><input type="checkbox" checked={nieuw.rol === "admin"} onChange={(e) => setNieuw({ ...nieuw, rol: e.target.checked ? "admin" : "lid" })} /><span />Ook organisatie (admin)</label>
           <div className="knoppenrij" style={{ marginTop: 14 }}>
             <button className="knop primair" disabled={bezig}>Toevoegen</button>
@@ -280,7 +326,7 @@ function Leden() {
             <Rugnummer nummer={l.rugnummer} schaal={0.85} demo={l.demo} />
             <div className="lid-info">
               <b>{l.naam}{l.rol === "admin" && <em className="rolbadge">admin</em>}{l.demo && <em className="rolbadge demo">demo</em>}</b>
-              <span className="klein">{l.demo ? "voorbeeldrenner, kan niet inloggen" : l.email}{l.wachtwoordStandaard && !l.demo ? " · code nog niet gewijzigd" : ""}</span>
+              <span className="klein">{l.demo ? "voorbeeldrenner, kan niet inloggen" : l.email}{l.wachtwoordStandaard && !l.demo ? " · wachtwoord nog niet zelf gewijzigd" : ""}</span>
             </div>
             <Icoon naam="verder" className="i18 grijs" />
           </button>
@@ -299,12 +345,19 @@ function Leden() {
                 {gekozen.fietsen?.length > 0 && <div><dt>Fietst op</dt><dd>{gekozen.fietsen.map((f) => <TypeChip key={f} type={f} />)}</dd></div>}
                 <div><dt>Doet mee sinds</dt><dd>{gekozen.aangemaakt ? new Date(gekozen.aangemaakt).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" }) : "onbekend"}</dd></div>
                 <div><dt>Ritten</dt><dd className="tab">{st.gereden} gereden · {st.km} km · {st.komend} aangemeld</dd></div>
-                <div><dt>Inloggen</dt><dd>{gekozen.demo ? "kan niet inloggen" : gekozen.wachtwoordStandaard ? "met de code uit de mail" : "met een eigen wachtwoord"}</dd></div>
+                <div><dt>Inloggen</dt><dd>{gekozen.demo ? "kan niet inloggen" : gekozen.wachtwoordStandaard ? "met het wachtwoord uit de mail" : "met een zelfgekozen wachtwoord"}</dd></div>
               </dl>
               {!gekozen.demo && (
                 <>
-                  <button className={`knop vol ${bevestig === "code" ? "primair" : ""}`} onClick={nieuweCode} disabled={bezig}><Icoon naam="mail" />{bevestig === "code" ? "Ja, maak een nieuwe code" : "Nieuwe code sturen"}</button>
-                  {bevestig === "code" && <p className="klein" style={{ margin: "8px 0 0" }}>De huidige code of het eigen wachtwoord van {gekozen.naam.split(" ")[0]} werkt daarna niet meer.</p>}
+                  {bevestig !== "code" ? (
+                    <button className="knop vol" onClick={nieuwWachtwoord} disabled={bezig}><Icoon naam="mail" />Nieuw wachtwoord sturen</button>
+                  ) : (
+                    <form onSubmit={nieuwWachtwoord}>
+                      <WachtwoordVeld waarde={nieuwWw} onWijzig={setNieuwWw} label="Nieuw wachtwoord" />
+                      <button className="knop vol primair" disabled={bezig}><Icoon naam="mail" />{bezig ? "Bezig…" : "Opslaan en mailen"}</button>
+                      <p className="klein" style={{ margin: "8px 0 0" }}>Het huidige wachtwoord van {gekozen.naam.split(" ")[0]} werkt daarna niet meer.</p>
+                    </form>
+                  )}
                 </>
               )}
               <div className="keuze2" style={{ marginTop: 10 }}>
@@ -445,7 +498,7 @@ function Instellingen() {
       const r = await api("admin/meldingen", { methode: "PUT", body: { email: melder } });
       setSessie({ ...sessie, meldingsEmail: r.meldingsEmail });
       if (!r.meldingsEmail) setMelderInfo({ ok: true, tekst: "Meldingen per e-mail staan uit. Nieuwe aanvragen zie je nog wel in de app." });
-      else if (r.test?.verstuurd) setMelderInfo({ ok: true, tekst: `Opgeslagen. Er is een testmail onderweg naar ${r.meldingsEmail}. Is dit een nieuw adres? Klik dan één keer op de bevestigingslink in de eerste mail (van FormSubmit), daarna komen alle meldingen binnen.` });
+      else if (r.test?.verstuurd) setMelderInfo({ ok: true, tekst: sessie.mailserver ? `Opgeslagen. Er is een testmail onderweg naar ${r.meldingsEmail}.` : `Opgeslagen. Er is een testmail onderweg naar ${r.meldingsEmail}. Is dit een nieuw adres? Klik dan één keer op de bevestigingslink in de eerste mail (van FormSubmit), daarna komen alle meldingen binnen.` });
       else setMelderInfo({ ok: false, tekst: "Opgeslagen, maar de testmail kon nu niet worden verstuurd. Nieuwe aanvragen zie je in elk geval in de app." });
     } catch (err) { setMelderInfo({ ok: false, tekst: err.message }); }
     setMelderBezig(false);
@@ -515,12 +568,13 @@ export default function Admin({ deel }) {
         <span className="label"><Icoon naam="open" className="i16" /> Ontgrendeld</span>
         <h1>Organisatie</h1>
       </header>
-      {(sessie.codeStandaard || sessie.lid.wachtwoordStandaard || !sessie.meldingsEmail) && (
+      {(sessie.codeStandaard || sessie.lid.wachtwoordStandaard || !sessie.meldingsEmail || !sessie.mailserver) && (
         <div className="melding let">
           <Icoon naam="let" />
           <div>
             {sessie.codeStandaard && <div>De admincode is nog de standaardcode. <button className="linkknop" onClick={() => kies("instellingen")}>Wijzig de code.</button></div>}
             {sessie.lid.wachtwoordStandaard && <div>Je wachtwoord is nog het startwachtwoord. <button className="linkknop" onClick={() => ga("/profiel")}>Wijzig je wachtwoord.</button></div>}
+            {!sessie.mailserver && <div>De mailserver is nog niet ingesteld. Welkomstmails gaan dan niet automatisch; je stuurt ze zelf via WhatsApp of mail.</div>}
             {!sessie.meldingsEmail && <div>Er is nog geen e-mailadres voor meldingen over nieuwe aanvragen. <button className="linkknop" onClick={() => kies("instellingen")}>Stel het in.</button></div>}
           </div>
         </div>

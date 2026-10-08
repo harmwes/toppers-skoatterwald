@@ -1,7 +1,10 @@
 // Uitgebreide test van de API: rechten, invoercontrole en de hele meedoen-stroom.
 process.env.LOCAL_STORE_DIR = "/tmp/ts-test";
-import { rmSync } from "node:fs";
+process.env.MAIL_NAAR_MAP = "/tmp/ts-test-mail";
+import { rmSync, readdirSync, readFileSync } from "node:fs";
 rmSync("/tmp/ts-test", { recursive: true, force: true });
+rmSync("/tmp/ts-test-mail", { recursive: true, force: true });
+const mails = () => { try { return readdirSync("/tmp/ts-test-mail").sort().map((f) => JSON.parse(readFileSync(`/tmp/ts-test-mail/${f}`, "utf8"))); } catch { return []; } };
 const { default: api } = await import("../netlify/functions/api.mjs");
 let goed = 0, fout = 0;
 function sessie() {
@@ -36,8 +39,14 @@ let a = (await admin("GET", "admin/aanvragen")).j.aanvragen;
 check("precies 1 aanvraag (geen bot, geen dubbel, geen lid)", a.length === 1, JSON.stringify(a.map((x) => x.email)));
 check("fietsen gefilterd", JSON.stringify(a[0].fietsen) === '["race"]');
 check("ik toont aantal aanvragen", (await admin("GET", "ik")).j.aanvragen === 1);
-const acc = await admin("POST", `admin/aanvragen/${a[0].id}/accepteer`);
-check("accepteren geeft code van 8 cijfers", /^\d{8}$/.test(acc.j.code || ""), acc.t);
+check("accepteren zonder wachtwoord = 400", (await admin("POST", `admin/aanvragen/${a[0].id}/accepteer`, {})).s === 400);
+check("accepteren met te kort wachtwoord = 400", (await admin("POST", `admin/aanvragen/${a[0].id}/accepteer`, { wachtwoord: "kort" })).s === 400);
+const voorMail = mails().length;
+const acc = await admin("POST", `admin/aanvragen/${a[0].id}/accepteer`, { wachtwoord: "Waaier-Bidon-47" });
+acc.j.code = "Waaier-Bidon-47";
+check("accepteren met gekozen wachtwoord", acc.s === 200 && acc.j.mail?.verstuurd === true && acc.j.mail.van === "harmwesseling@yahoo.com", acc.t);
+const welkom = mails().slice(voorMail);
+check("welkomstmail naar nieuwe fietser met wachtwoord", welkom.length === 1 && welkom[0].aan === "harm@voorbeeld.nl" && welkom[0].van === "harmwesseling@yahoo.com" && welkom[0].tekst.includes("Wachtwoord: Waaier-Bidon-47") && welkom[0].onderwerp.startsWith("Welkom"), JSON.stringify(welkom));
 check("mobiel meegenomen en genormaliseerd", acc.j.lid.mobiel === "+31612345678", acc.t);
 check("aanvraag weg na accepteren", (await admin("GET", "admin/aanvragen")).j.aanvragen.length === 0);
 check("Harm logt in met code", (await harm("POST", "login", { email: "HARM@voorbeeld.nl", wachtwoord: acc.j.code })).s === 200);
@@ -54,8 +63,11 @@ check("mobiel leegmaken", (await harm("PUT", "ik", { mobiel: "" })).j.lid.mobiel
 check("admin zet mobiel", (await admin("PUT", `admin/leden/${acc.j.lid.id}`, { mobiel: "0612345678" })).s === 200 && (await admin("GET", "admin/leden")).j.leden.find((l) => l.id === acc.j.lid.id).mobiel === "+31612345678");
 
 // Nieuwe code
-const nc = await admin("POST", `admin/leden/${acc.j.lid.id}/nieuwecode`);
-check("nieuwe code", /^\d{8}$/.test(nc.j.code) && nc.j.code !== acc.j.code);
+check("nieuw wachtwoord te kort = 400", (await admin("POST", `admin/leden/${acc.j.lid.id}/nieuwwachtwoord`, { wachtwoord: "123" })).s === 400);
+const nc = await admin("POST", `admin/leden/${acc.j.lid.id}/nieuwwachtwoord`, { wachtwoord: "Kopwerk-Dijk-12" });
+nc.j.code = "Kopwerk-Dijk-12";
+const ncMail = mails().at(-1);
+check("nieuw wachtwoord gemaild", nc.s === 200 && nc.j.mail?.verstuurd && ncMail.aan === "harm@voorbeeld.nl" && ncMail.tekst.includes("Kopwerk-Dijk-12") && ncMail.onderwerp.includes("nieuwe wachtwoord"), nc.t);
 check("oude sessie ongeldig na nieuwe code", (await harm("GET", "ik")).s === 401);
 check("oude code werkt niet", (await harm2("POST", "login", { email: "harm@voorbeeld.nl", wachtwoord: acc.j.code })).s === 401);
 check("nieuwe code werkt", (await harm2("POST", "login", { email: "harm@voorbeeld.nl", wachtwoord: nc.j.code })).s === 200);
@@ -119,6 +131,15 @@ check("admin kan eigen rechten niet afnemen", (await admin("PUT", "admin/leden/a
 check("code te kort", (await admin("PUT", "admin/code", { code: "12" })).s === 400);
 check("meldingsadres ongeldig", (await admin("PUT", "admin/meldingen", { email: "x" })).s === 400);
 check("meldingsadres uit", (await admin("PUT", "admin/meldingen", { email: "" })).j.meldingsEmail === "");
+const melder = await admin("PUT", "admin/meldingen", { email: "orga@voorbeeld.nl" });
+check("testmelding via mailserver", melder.j.test?.verstuurd === true && mails().at(-1).aan === "orga@voorbeeld.nl" && mails().at(-1).onderwerp.includes("testmelding"), melder.t);
+await anon("POST", "aanvraag", { naam: "Sanne Melding", email: "sanne@voorbeeld.nl", fietsen: ["gravel"] });
+check("nieuwe aanvraag gemeld via mailserver", mails().at(-1).aan === "orga@voorbeeld.nl" && mails().at(-1).onderwerp.includes("Sanne Melding wil meedoen") && mails().at(-1).tekst.includes("gravel"));
+await admin("PUT", "admin/meldingen", { email: "" });
+check("fietser toevoegen zonder wachtwoord = 400", (await admin("POST", "admin/leden", { naam: "Piet Zonder", email: "piet@voorbeeld.nl" })).s === 400);
+const piet = await admin("POST", "admin/leden", { naam: "Piet Met", email: "piet@voorbeeld.nl", wachtwoord: "Tandem-Wind-33" });
+check("fietser toevoegen met wachtwoord en welkomstmail", piet.s === 200 && piet.j.mail?.verstuurd && mails().at(-1).aan === "piet@voorbeeld.nl" && mails().at(-1).tekst.includes("Tandem-Wind-33") && !("code" in piet.j), piet.t);
+check("ik meldt mailserver aan voor admin", (await admin("GET", "ik")).j.mailserver === true);
 const admin2 = sessie();
 await admin2("POST", "login", { email: "admin@toppers.nl", wachtwoord: "admin" }); await admin2("POST", "admin/ontgrendel", { code: "7000" });
 check("code wijzigen", (await admin("PUT", "admin/code", { code: "4321" })).s === 200);
