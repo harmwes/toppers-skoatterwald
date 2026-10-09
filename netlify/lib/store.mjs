@@ -177,10 +177,21 @@ let lokaal, redis;
 export function db() {
   const local = process.env.LOCAL_STORE_DIR;
   if (local) return (lokaal ||= metVersleuteling(fileStore(local)));
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  const { url, token } = redisGegevens();
   if (url && token) return (redis ||= metVersleuteling(redisStore(url, token)));
+  if (process.env.VERCEL) throw new Error("Opslag ontbreekt: koppel in Vercel bij Storage een Upstash Redis-database aan dit project en deploy opnieuw.");
   return metVersleuteling(netlifyStore());
+}
+
+// Vercel zet de Upstash-gegevens soms met een eigen voorvoegsel neer (bijvoorbeeld STORAGE_KV_REST_API_URL).
+function redisGegevens() {
+  for (const [naam, url] of Object.entries(process.env)) {
+    const m = naam.match(/^(.*)(KV_REST_API|REDIS_REST)_URL$/);
+    if (!m || !url) continue;
+    const token = process.env[`${m[1]}${m[2]}_TOKEN`];
+    if (token) return { url, token };
+  }
+  return {};
 }
 
 // Netlify Blobs pas laden als we echt op Netlify draaien.
