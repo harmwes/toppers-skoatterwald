@@ -1,5 +1,7 @@
 // Welkomstbericht met inloggegevens. De server mailt het via Yahoo; WhatsApp en eigen mail blijven als reserve.
-export const APP_URL = "https://toppers-skoatterwald.netlify.app";
+// In de browser het adres waar de app nu draait; op de server het vaste adres van de live app.
+export const APP_URL = typeof window !== "undefined" ? window.location.origin
+  : process.env.APP_URL || process.env.URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "https://toppers-skoatterwald.vercel.app");
 export const HANDLEIDING_URL = `${APP_URL}/handleiding.pdf`;
 
 export function welkomTekst({ naam, email, wachtwoord, nieuwWachtwoord = false, afzender = "" }, kanaal = "mail") {

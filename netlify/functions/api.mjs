@@ -6,7 +6,7 @@ import {
   maakAdminSessie, adminOntgrendeld, remPoging, SESSIE_COOKIE, ADMIN_COOKIE,
 } from "../lib/auth.mjs";
 import { stuurMail, mailserverAan, AFZENDER } from "../lib/mailer.mjs";
-import { welkomTekst, welkomOnderwerp } from "../../src/lib/mail.js";
+import { welkomTekst, welkomOnderwerp, APP_URL } from "../../src/lib/mail.js";
 
 const TYPES = ["race", "gravel", "atb"];
 const STATUS = ["ja", "nee", "misschien"];
@@ -74,18 +74,18 @@ async function meldAanvraag(cfg, a, test = false) {
   if (mailserverAan()) {
     const tekstregels = test
       ? "Dit is een test vanuit de app. Meldingen komen op dit adres binnen."
-      : `${a.naam} wil meedoen met Toppers Skoatterwâld.\n\nE-mailadres: ${a.email}\nFietst: ${(a.fietsen || []).join(", ") || "-"}\nBericht: ${a.bericht || "-"}\n\nOpen de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen:\nhttps://toppers-skoatterwald.netlify.app/admin?tab=aanvragen`;
+      : `${a.naam} wil meedoen met Toppers Skoatterwâld.\n\nE-mailadres: ${a.email}\nFietst: ${(a.fietsen || []).join(", ") || "-"}\nBericht: ${a.bericht || "-"}\n\nOpen de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen:\n${APP_URL}/admin?tab=aanvragen`;
     return stuurMail({ aan: cfg.meldingsEmail, onderwerp: test ? "Toppers Skoatterwâld: testmelding" : `Toppers Skoatterwâld: ${a.naam} wil meedoen`, tekst: tekstregels });
   }
   try {
     const r = await fetch(`https://formsubmit.co/ajax/${encodeURIComponent(cfg.meldingsEmail)}`, {
       method: "POST", signal: AbortSignal.timeout(7000),
-      headers: { "content-type": "application/json", accept: "application/json", referer: "https://toppers-skoatterwald.netlify.app/", origin: "https://toppers-skoatterwald.netlify.app" },
+      headers: { "content-type": "application/json", accept: "application/json", referer: `${APP_URL}/`, origin: APP_URL },
       body: JSON.stringify({
         _subject: test ? "Toppers Skoatterwâld: testmelding" : `Toppers Skoatterwâld: ${a.naam} wil meedoen`,
         _template: "table", _captcha: "false",
         Naam: a.naam, "E-mailadres": a.email, Fietst: (a.fietsen || []).join(", ") || "-", Bericht: a.bericht || "-",
-        Actie: test ? "Dit is een test vanuit de app. Meldingen komen op dit adres binnen." : "Open de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen: https://toppers-skoatterwald.netlify.app/admin?tab=aanvragen",
+        Actie: test ? "Dit is een test vanuit de app. Meldingen komen op dit adres binnen." : `Open de app, ga naar Admin, Aanvragen, en kies accepteren of afwijzen: ${APP_URL}/admin?tab=aanvragen`,
       }),
     });
     const j = await r.json().catch(() => ({}));
