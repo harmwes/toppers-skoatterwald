@@ -23,7 +23,8 @@ Wijzig het wachtwoord en de code direct na de eerste keer inloggen. De app herin
 ## Techniek
 
 - React 18 en Vite, zonder UI-framework, met eigen CSS
-- Netlify Functions (`netlify/functions/api.mjs`) en Netlify Blobs voor de opslag
+- De API staat in `netlify/functions/api.mjs`. Op Vercel komt die binnen via `api/index.mjs` (zie `vercel.json`), met Upstash Redis als opslag (`KV_REST_API_URL` en `KV_REST_API_TOKEN`). Op Netlify draait dezelfde API als Netlify Function, met Netlify Blobs als opslag.
+- Geheime instellingen: `TOPPERS_SLEUTEL` (versleuteling van alle gegevens) en `YAHOO_APP_WACHTWOORD` (mail)
 - Leaflet met kaarttegels van OpenStreetMap (donker gefilterd)
 - Weer van Open-Meteo, zonder API-sleutel
 - Lettertypen (Barlow) worden door de site zelf geleverd, niet via Google
